@@ -1,0 +1,945 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.sessionStorage
+  }
+});
+
+// Crear otra cuenta no debe reemplazar la sesion actual de la medica.
+const accountProvisioningClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
+});
+
+export type Role = "MEDICA_ADMIN" | "SECRETARIA";
+export type IdentityDocumentType = "DNI" | "LC" | "LE" | "PASAPORTE" | "CEDULA_IDENTIDAD" | "DOCUMENTO_EXTRANJERO";
+
+export type Location = {
+  id: string;
+  name: string;
+  address: string | null;
+  active: boolean;
+};
+
+export type Profile = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+  location_id: string | null;
+  active: boolean;
+  location?: Location | null;
+};
+
+export type InsurancePlan = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
+export type MedicalAvailability = {
+  id: string;
+  weekday: number;
+  enabled: boolean;
+  start_time: string;
+  end_time: string;
+  slot_interval_min: number;
+  location_id: string;
+  locations?: Location | null;
+};
+
+export type Holiday = {
+  id: string;
+  date: string;
+  name: string;
+  kind: "FERIADO" | "VACACIONES" | "CONGRESO" | "LICENCIA" | "OTRO";
+  active: boolean;
+};
+
+export type Patient = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  document_type: IdentityDocumentType;
+  document: string | null;
+  birth_date: string | null;
+  phone: string | null;
+  email: string | null;
+  status: string;
+  affiliate_number: string | null;
+  insurance_plan_id: string | null;
+  location_id: string | null;
+  insurance_plans?: InsurancePlan | null;
+  locations?: Location | null;
+  patient_locations?: Array<{ location_id: string; locations?: Location | null }>;
+  linked_existing?: boolean;
+  appointments?: Appointment[];
+  studies?: Study[];
+  administrative_notes?: AdministrativeNote[];
+  clinical_evolutions?: ClinicalEvolution[];
+  communications?: Communication[];
+  attachments?: Attachment[];
+};
+
+export type Appointment = {
+  id: string;
+  starts_at: string;
+  duration_min: number;
+  type: string;
+  reason: string | null;
+  status: AppointmentStatus;
+  patient_id: string;
+  location_id: string;
+  patients?: Patient | null;
+  locations?: Location | null;
+};
+
+export type AppointmentStatus = "PENDIENTE" | "CONFIRMADO" | "RECORDATORIO_ENVIADO" | "CANCELADO" | "AUSENTE";
+
+export type Study = {
+  id: string;
+  type: string;
+  performed_at: string | null;
+  indication: string | null;
+  conclusion: string | null;
+  status: string;
+  patient_id: string;
+  patients?: Patient | null;
+};
+
+export type Report = {
+  id: string;
+  file_name: string;
+  source: string;
+  status: string;
+  location_id: string | null;
+  patient_id: string | null;
+  study_id: string | null;
+};
+
+export type AdministrativeNote = {
+  id: string;
+  text: string;
+  created_at: string;
+};
+
+export type ClinicalEvolution = {
+  id: string;
+  occurred_at: string;
+  reason: string;
+  diagnosis: string | null;
+  notes: string | null;
+  indications: string | null;
+  next_visit_at: string | null;
+};
+
+export type Communication = {
+  id: string;
+  channel: string;
+  subject: string;
+  body: string;
+  sent_at: string;
+};
+
+export type Attachment = {
+  id: string;
+  patient_id: string;
+  study_id: string | null;
+  file_name: string;
+  storage_path: string | null;
+  external_url: string | null;
+  storage_provider: "SUPABASE" | "GOOGLE_DRIVE";
+  mime_type: string | null;
+  size_bytes: number | null;
+  origin: "PACIENTE" | "MEDICA" | "CARDIOVEX" | "ECCOSUR" | "OTRO";
+  kind: "ESTUDIO_PREVIO" | "INFORME_PROPIO" | "ORDEN_MEDICA" | "IMAGEN" | "VIDEO" | "OTRO";
+  description: string | null;
+  pending_send: boolean;
+  created_at: string;
+  patients?: Patient | null;
+};
+
+export type PatientInput = {
+  first_name: string;
+  last_name: string;
+  document_type?: IdentityDocumentType;
+  document?: string;
+  birth_date?: string;
+  phone?: string;
+  email?: string;
+  affiliate_number?: string;
+  insurance_plan_id?: string;
+  location_id?: string;
+};
+
+export type PatientContactInput = {
+  phone?: string;
+  email?: string;
+  affiliate_number?: string;
+  insurance_plan_id?: string;
+  location_id?: string;
+};
+
+export type ClinicalEvolutionInput = {
+  patient_id: string;
+  occurred_at: string;
+  reason: string;
+  diagnosis?: string;
+  notes?: string;
+  indications?: string;
+  next_visit_at?: string;
+};
+
+export type AdministrativeNoteInput = {
+  patient_id: string;
+  text: string;
+};
+
+export type AppointmentInput = {
+  starts_at: string;
+  duration_min: number;
+  type: string;
+  reason?: string;
+  patient_id: string;
+  location_id: string;
+};
+
+export type AppointmentUpdateInput = Partial<AppointmentInput> & {
+  status?: AppointmentStatus;
+};
+
+export type LocationInput = {
+  name: string;
+  address?: string;
+  active?: boolean;
+};
+
+export type InsurancePlanInput = {
+  name: string;
+  active?: boolean;
+};
+
+export type MedicalAvailabilityInput = {
+  weekday: number;
+  enabled: boolean;
+  start_time: string;
+  end_time: string;
+  slot_interval_min: number;
+  location_id: string;
+};
+
+export type ProfileInput = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+  location_id?: string | null;
+  active: boolean;
+};
+
+export type NewUserInput = {
+  email: string;
+  password: string;
+  full_name: string;
+  role: Role;
+  location_id?: string | null;
+};
+
+function throwIfError(error: { message: string } | null) {
+  if (error) throw new Error(error.message);
+}
+
+function authErrorMessage(error: { message: string; code?: string } | null) {
+  if (!error) return "No se pudo iniciar sesion.";
+
+  switch (error.code) {
+    case "invalid_credentials":
+      return "Email o contrasena incorrectos.";
+    case "email_not_confirmed":
+      return "Primero confirma tu email desde el mensaje enviado por Supabase.";
+    case "user_banned":
+      return "Este usuario esta deshabilitado. Consulta con la medica/admin.";
+    case "weak_password":
+      return "La contrasena es demasiado debil. Usa al menos 8 caracteres y evita datos personales.";
+    case "over_request_rate_limit":
+    case "over_email_send_rate_limit":
+      return "Hubo demasiados intentos. Espera unos minutos y volve a probar.";
+    default:
+      return error.message || "No se pudo iniciar sesion.";
+  }
+}
+
+function toIsoDateTime(value?: string | null) {
+  if (!value) return null;
+  return new Date(value).toISOString();
+}
+
+export function parseBirthDate(value?: string | null) {
+  if (!value) return null;
+  const cleanValue = value.trim();
+  const displayMatch = cleanValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const isoMatch = cleanValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!displayMatch && !isoMatch) throw new Error("La fecha de nacimiento debe tener formato dd/mm/yyyy.");
+
+  const dayText = displayMatch?.[1] || isoMatch?.[3] || "";
+  const monthText = displayMatch?.[2] || isoMatch?.[2] || "";
+  const yearText = displayMatch?.[3] || isoMatch?.[1] || "";
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const date = new Date(year, month - 1, day);
+  const today = new Date();
+
+  if (
+    year < 1900
+    || year > today.getFullYear()
+    || date > today
+    || date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) {
+    throw new Error("La fecha de nacimiento no es valida.");
+  }
+
+  return `${yearText}-${monthText}-${dayText}`;
+}
+
+export function formatProperName(value?: string | null) {
+  const connectors = new Set(["de", "del", "la", "las", "los", "y", "e"]);
+  return (value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((word, index) => {
+      const lower = word.toLocaleLowerCase("es-AR");
+      if (index > 0 && connectors.has(lower)) return lower;
+      return lower.replace(/(^|[-'])([a-z\u00e1\u00e9\u00ed\u00f3\u00fa\u00fc\u00f1])/g, (_match, prefix: string, letter: string) => (
+        `${prefix}${letter.toLocaleUpperCase("es-AR")}`
+      ));
+    })
+    .join(" ");
+}
+
+export function normalizeDocumentNumber(type: IdentityDocumentType, value?: string | null) {
+  const cleanValue = (value || "").trim();
+  if (["DNI", "LC", "LE"].includes(type)) return cleanValue.replace(/\D/g, "");
+  return cleanValue.toLocaleUpperCase("es-AR").replace(/[^A-Z0-9-]/g, "");
+}
+
+export function formatDocumentNumber(type: IdentityDocumentType, value?: string | null, emptyValue = "-") {
+  const normalized = normalizeDocumentNumber(type, value);
+  if (!normalized) return emptyValue;
+  if (["DNI", "LC", "LE"].includes(type)) return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return normalized;
+}
+
+export async function signIn(email: string, password: string) {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !password) throw new Error("Escribi el email y la contrasena.");
+
+  const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+  if (error) throw new Error(authErrorMessage(error));
+
+  try {
+    const profile = await getCurrentProfile();
+    if (!profile) throw new Error("La cuenta ingreso correctamente, pero no tiene un perfil habilitado.");
+    return profile;
+  } catch (error) {
+    await supabase.auth.signOut();
+    throw error;
+  }
+}
+
+export async function requestUserAccess(input: { email: string; password: string; full_name: string }) {
+  const { data, error } = await supabase.auth.signUp({
+    email: input.email.trim(),
+    password: input.password,
+    options: {
+      data: {
+        full_name: formatProperName(input.full_name),
+        requested_role: "SECRETARIA"
+      }
+    }
+  });
+  throwIfError(error);
+
+  if (data.session?.user) {
+    await supabase.from("profiles").upsert({
+      id: data.session.user.id,
+      email: input.email.trim(),
+      full_name: formatProperName(input.full_name),
+      role: "SECRETARIA",
+      location_id: null,
+      active: false
+    });
+  }
+}
+
+export async function requestPasswordReset(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: window.location.origin
+  });
+  if (error) throw new Error(authErrorMessage(error));
+}
+
+export async function updateCurrentPassword(password: string) {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw new Error(authErrorMessage(error));
+}
+
+export async function resendConfirmationEmail(email: string) {
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: email.trim().toLowerCase()
+  });
+  if (error) throw new Error(authErrorMessage(error));
+}
+
+export async function signOut() {
+  await supabase.auth.signOut();
+}
+
+export async function getCurrentProfile() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*, location:locations(*)")
+    .eq("id", sessionData.session.user.id)
+    .maybeSingle();
+
+  if (error) throw new Error(`No se pudo leer el perfil del usuario: ${error.message}`);
+  if (!data) throw new Error("La cuenta existe, pero falta crear su perfil. Ejecuta el parche SQL y habilitala desde Usuarios.");
+  if (!data.active) throw new Error("Tu usuario esta pendiente de aprobacion por la medica/admin.");
+  if (data.role === "SECRETARIA" && !data.location_id) {
+    throw new Error("La secretaria todavia no tiene un consultorio asignado.");
+  }
+  return data as Profile;
+}
+
+export async function listPatients(query = "") {
+  let request = supabase
+    .from("patients")
+    .select("*, insurance_plans(*), locations(*), patient_locations(location_id, locations(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
+
+  if (query.trim()) {
+    const cleanQuery = query.trim();
+    const digits = cleanQuery.replace(/\D/g, "");
+    const q = `%${cleanQuery}%`;
+    const documentQuery = digits ? `%${digits}%` : q;
+    request = request.or(`first_name.ilike.${q},last_name.ilike.${q},document.ilike.${documentQuery},phone.ilike.${documentQuery}`);
+  }
+
+  const { data, error } = await request;
+  throwIfError(error);
+  return (data || []) as Patient[];
+}
+
+export async function getPatient(id: string) {
+  const { data, error } = await supabase
+    .from("patients")
+    .select(`
+      *,
+      insurance_plans(*),
+      locations(*),
+      patient_locations(location_id, locations(*)),
+      administrative_notes(*),
+      clinical_evolutions(*),
+      communications(*),
+      attachments(*),
+      appointments(*, locations(*)),
+      studies(*)
+    `)
+    .eq("id", id)
+    .single();
+
+  throwIfError(error);
+  return data as Patient;
+}
+
+export async function createPatient(input: PatientInput) {
+  const documentType = input.document_type || "DNI";
+  const document = normalizeDocumentNumber(documentType, input.document);
+  if (!document) throw new Error("El numero de documento es obligatorio para evitar pacientes duplicados.");
+  if (!input.location_id) throw new Error("Elegir el consultorio para vincular al paciente.");
+
+  const { data, error } = await supabase.rpc("register_or_link_patient", {
+    p_first_name: formatProperName(input.first_name),
+    p_last_name: formatProperName(input.last_name),
+    p_document_type: documentType,
+    p_document: document,
+    p_birth_date: parseBirthDate(input.birth_date),
+    p_phone: input.phone?.trim() || null,
+    p_email: input.email?.trim() || null,
+    p_affiliate_number: input.affiliate_number?.trim() || null,
+    p_insurance_plan_id: input.insurance_plan_id || null,
+    p_location_id: input.location_id
+  });
+  throwIfError(error);
+
+  const result = data as { patient_id: string; already_existed: boolean };
+  const patient = await getPatient(result.patient_id);
+  return { ...patient, linked_existing: result.already_existed };
+}
+
+export async function updatePatientContact(id: string, input: PatientContactInput) {
+  const { data, error } = await supabase
+    .from("patients")
+    .update({
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
+      affiliate_number: input.affiliate_number?.trim() || null,
+      insurance_plan_id: input.insurance_plan_id || null,
+      location_id: input.location_id || null
+    })
+    .eq("id", id)
+    .select("*, insurance_plans(*), locations(*)")
+    .single();
+
+  throwIfError(error);
+  if (input.location_id) {
+    const { error: linkError } = await supabase
+      .from("patient_locations")
+      .upsert({ patient_id: id, location_id: input.location_id }, { onConflict: "patient_id,location_id" });
+    throwIfError(linkError);
+  }
+  return data as Patient;
+}
+
+export async function deactivatePatient(id: string) {
+  const { data, error } = await supabase
+    .from("patients")
+    .update({ status: "baja" })
+    .eq("id", id)
+    .select("*, insurance_plans(*), locations(*)")
+    .single();
+
+  throwIfError(error);
+  return data as Patient;
+}
+
+export async function createClinicalEvolution(input: ClinicalEvolutionInput) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const { data, error } = await supabase
+    .from("clinical_evolutions")
+    .insert({
+      patient_id: input.patient_id,
+      occurred_at: toIsoDateTime(input.occurred_at),
+      reason: input.reason.trim(),
+      diagnosis: input.diagnosis?.trim() || null,
+      notes: input.notes?.trim() || null,
+      indications: input.indications?.trim() || null,
+      next_visit_at: toIsoDateTime(input.next_visit_at),
+      created_by: sessionData.session?.user.id
+    })
+    .select("*")
+    .single();
+
+  throwIfError(error);
+  return data as ClinicalEvolution;
+}
+
+export async function createAdministrativeNote(input: AdministrativeNoteInput) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const { data, error } = await supabase
+    .from("administrative_notes")
+    .insert({
+      patient_id: input.patient_id,
+      text: input.text.trim(),
+      created_by: sessionData.session?.user.id
+    })
+    .select("*")
+    .single();
+
+  throwIfError(error);
+  return data as AdministrativeNote;
+}
+
+export async function uploadPatientAttachment(input: {
+  patientId: string;
+  file: File;
+  origin: Attachment["origin"];
+  kind: Attachment["kind"];
+  description?: string;
+  studyId?: string | null;
+}) {
+  const safeName = input.file.name.replace(/[^\w.\-]+/g, "_");
+  const storagePath = `${input.patientId}/${Date.now()}-${safeName}`;
+
+  const upload = await supabase.storage
+    .from("patient-files")
+    .upload(storagePath, input.file, { upsert: false });
+  throwIfError(upload.error);
+
+  const { data, error } = await supabase
+    .from("attachments")
+    .insert({
+      patient_id: input.patientId,
+      study_id: input.studyId || null,
+      file_name: input.file.name,
+      storage_path: storagePath,
+      external_url: null,
+      storage_provider: "SUPABASE",
+      mime_type: input.file.type || null,
+      size_bytes: input.file.size,
+      origin: input.origin,
+      kind: input.kind,
+      description: input.description || null,
+      pending_send: false
+    })
+    .select("*")
+    .single();
+
+  throwIfError(error);
+  return data as Attachment;
+}
+
+export async function linkDriveAttachment(input: {
+  patientId: string;
+  fileName: string;
+  driveUrl: string;
+  origin: Attachment["origin"];
+  kind: Attachment["kind"];
+  description?: string;
+  studyId?: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("attachments")
+    .insert({
+      patient_id: input.patientId,
+      study_id: input.studyId || null,
+      file_name: input.fileName.trim(),
+      storage_path: null,
+      external_url: input.driveUrl.trim(),
+      storage_provider: "GOOGLE_DRIVE",
+      mime_type: "application/pdf",
+      size_bytes: null,
+      origin: input.origin,
+      kind: input.kind,
+      description: input.description || null,
+      pending_send: false
+    })
+    .select("*")
+    .single();
+
+  throwIfError(error);
+  return data as Attachment;
+}
+
+export async function createSignedAttachmentUrl(path: string) {
+  const { data, error } = await supabase.storage
+    .from("patient-files")
+    .createSignedUrl(path, 60 * 10);
+  throwIfError(error);
+  if (!data) throw new Error("No se pudo generar el enlace del adjunto.");
+  return data.signedUrl;
+}
+
+export async function listAppointments() {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("*, patients(*), locations(*)")
+    .order("starts_at", { ascending: true });
+  throwIfError(error);
+  return (data || []) as Appointment[];
+}
+
+export async function createAppointment(input: AppointmentInput) {
+  const normalizedType = normalizeAppointmentType(input.type, input.reason);
+  const { data, error } = await supabase
+    .from("appointments")
+    .insert({
+      starts_at: toIsoDateTime(input.starts_at),
+      duration_min: input.duration_min,
+      type: normalizedType.type,
+      reason: normalizedType.reason,
+      patient_id: input.patient_id,
+      location_id: input.location_id
+    })
+    .select("*, patients(*), locations(*)")
+    .single();
+
+  throwIfError(error);
+  return data as Appointment;
+}
+
+export async function updateAppointment(id: string, input: AppointmentUpdateInput) {
+  const update: Record<string, unknown> = {};
+  if (input.starts_at !== undefined) update.starts_at = toIsoDateTime(input.starts_at);
+  if (input.duration_min !== undefined) update.duration_min = input.duration_min;
+  if (input.type !== undefined) {
+    const normalizedType = normalizeAppointmentType(input.type, input.reason);
+    update.type = normalizedType.type;
+    update.reason = normalizedType.reason;
+  } else if (input.reason !== undefined) {
+    update.reason = input.reason?.trim() || null;
+  }
+  if (input.patient_id !== undefined) update.patient_id = input.patient_id;
+  if (input.location_id !== undefined) update.location_id = input.location_id;
+  if (input.status !== undefined) update.status = input.status;
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .update(update)
+    .eq("id", id)
+    .select("*, patients(*), locations(*)")
+    .single();
+
+  throwIfError(error);
+  return data as Appointment;
+}
+
+function normalizeAppointmentType(type: string, reason?: string | null) {
+  const cleanType = (type || "CONSULTA").trim() || "CONSULTA";
+  const cleanReason = reason?.trim() || "";
+  if (!cleanType.includes("+")) return { type: cleanType, reason: cleanReason || null };
+
+  const firstType = cleanType.split("+")[0] || "CONSULTA";
+  const marker = `[[MOTIVOS_TURNO:${cleanType}]]`;
+  const reasonWithoutMarker = cleanReason.replace(/^\[\[MOTIVOS_TURNO:[A-Z_+]+\]\]\s*/, "").trim();
+  return {
+    type: firstType,
+    reason: `${marker}${reasonWithoutMarker ? `\n${reasonWithoutMarker}` : ""}`
+  };
+}
+
+export async function listStudies() {
+  const { data, error } = await supabase
+    .from("studies")
+    .select("*, patients(*)")
+    .order("created_at", { ascending: false });
+  throwIfError(error);
+  return (data || []) as Study[];
+}
+
+export async function listAttachments() {
+  const { data, error } = await supabase
+    .from("attachments")
+    .select("*, patients(id, first_name, last_name, document_type, document)")
+    .order("created_at", { ascending: false });
+  throwIfError(error);
+  return (data || []) as Attachment[];
+}
+
+export async function listReports() {
+  const { data, error } = await supabase
+    .from("reports")
+    .select("*")
+    .order("detected_at", { ascending: false });
+  throwIfError(error);
+  return (data || []) as Report[];
+}
+
+export async function getConfiguration() {
+  const [insurancePlans, locations, availability] = await Promise.all([
+    supabase.from("insurance_plans").select("*").order("name"),
+    supabase.from("locations").select("*").order("name"),
+    supabase.from("medical_availability").select("*, locations(*)").order("weekday")
+  ]);
+  const holidays = await supabase.from("holidays").select("*").order("date");
+
+  throwIfError(insurancePlans.error);
+  throwIfError(locations.error);
+  throwIfError(availability.error);
+
+  return {
+    insurancePlans: insurancePlans.data as InsurancePlan[],
+    locations: locations.data as Location[],
+    availability: availability.data as MedicalAvailability[],
+    holidays: holidays.error ? [] : holidays.data as Holiday[]
+  };
+}
+
+export async function createLocation(input: LocationInput) {
+  const { data, error } = await supabase
+    .from("locations")
+    .insert({
+      name: input.name.trim(),
+      address: input.address?.trim() || null,
+      active: input.active ?? true
+    })
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as Location;
+}
+
+export async function updateLocation(id: string, input: LocationInput) {
+  const { data, error } = await supabase
+    .from("locations")
+    .update({
+      name: input.name.trim(),
+      address: input.address?.trim() || null,
+      active: input.active ?? true
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as Location;
+}
+
+export async function createInsurancePlan(input: InsurancePlanInput) {
+  const { data, error } = await supabase
+    .from("insurance_plans")
+    .insert({ name: input.name.trim(), active: input.active ?? true })
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as InsurancePlan;
+}
+
+export async function updateInsurancePlan(id: string, input: InsurancePlanInput) {
+  const { data, error } = await supabase
+    .from("insurance_plans")
+    .update({ name: input.name.trim(), active: input.active ?? true })
+    .eq("id", id)
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as InsurancePlan;
+}
+
+export async function createAvailability(input: MedicalAvailabilityInput) {
+  const { data, error } = await supabase
+    .from("medical_availability")
+    .insert(input)
+    .select("*, locations(*)")
+    .single();
+  throwIfError(error);
+  return data as MedicalAvailability;
+}
+
+export async function updateAvailability(id: string, input: MedicalAvailabilityInput) {
+  const { data, error } = await supabase
+    .from("medical_availability")
+    .update(input)
+    .eq("id", id)
+    .select("*, locations(*)")
+    .single();
+  throwIfError(error);
+  return data as MedicalAvailability;
+}
+
+export async function createHoliday(input: { date: string; name: string; kind: Holiday["kind"]; active?: boolean }) {
+  const { data, error } = await supabase
+    .from("holidays")
+    .insert({ date: input.date, name: input.name.trim(), kind: input.kind, active: input.active ?? true })
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as Holiday;
+}
+
+export async function updateHoliday(id: string, input: { date: string; name: string; kind: Holiday["kind"]; active: boolean }) {
+  const { data, error } = await supabase
+    .from("holidays")
+    .update({ date: input.date, name: input.name.trim(), kind: input.kind, active: input.active })
+    .eq("id", id)
+    .select("*")
+    .single();
+  throwIfError(error);
+  return data as Holiday;
+}
+
+export async function listProfiles() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*, location:locations(*)")
+    .order("full_name");
+  throwIfError(error);
+  return (data || []) as Profile[];
+}
+
+export async function createProfile(input: ProfileInput) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .insert({
+      id: input.id,
+      email: input.email.trim(),
+      full_name: formatProperName(input.full_name),
+      role: input.role,
+      location_id: input.role === "SECRETARIA" ? input.location_id : null,
+      active: input.active
+    })
+    .select("*, location:locations(*)")
+    .single();
+  throwIfError(error);
+  return data as Profile;
+}
+
+export async function createUserWithLogin(input: NewUserInput) {
+  const email = input.email.trim().toLowerCase();
+  const fullName = formatProperName(input.full_name);
+  const locationId = input.role === "SECRETARIA" ? input.location_id || null : null;
+
+  const { data: created, error: createError } = await accountProvisioningClient.auth.signUp({
+    email,
+    password: input.password,
+    options: {
+      data: {
+        full_name: fullName,
+        requested_role: input.role
+      }
+    }
+  });
+  if (createError) throw new Error(authErrorMessage(createError));
+  if (!created.user) throw new Error("Supabase no devolvio el usuario creado.");
+  if (created.user.identities && created.user.identities.length === 0) {
+    throw new Error("Ese email ya tiene una cuenta de acceso.");
+  }
+
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .upsert({
+        id: created.user.id,
+        email,
+        full_name: fullName,
+        role: input.role,
+        location_id: locationId,
+        active: true
+      })
+      .select("*, location:locations(*)")
+      .single();
+
+    throwIfError(profileError);
+    return profile as Profile;
+  } finally {
+    if (created.session) await accountProvisioningClient.auth.signOut();
+  }
+}
+
+export async function updateProfile(id: string, input: Omit<ProfileInput, "id">) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({
+      email: input.email.trim(),
+      full_name: formatProperName(input.full_name),
+      role: input.role,
+      location_id: input.role === "SECRETARIA" ? input.location_id : null,
+      active: input.active
+    })
+    .eq("id", id)
+    .select("*, location:locations(*)")
+    .single();
+  throwIfError(error);
+  return data as Profile;
+}
