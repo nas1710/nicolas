@@ -237,7 +237,7 @@ function App() {
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
-        {view === "usuarios" && canManageUsers(profile) && <Users key={`usuarios-${viewResetKey}`} />}
+        {view === "usuarios" && canManageUsers(profile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
       </main>
     </div>
   );
@@ -2248,7 +2248,7 @@ function Settings({ profile }: { profile: Profile }) {
   );
 }
 
-function Users() {
+function Users({ profile }: { profile: Profile }) {
   const [users, setUsers] = useState<Profile[]>([]);
   const [config, setConfig] = useState<{ locations: Location[] } | null>(null);
 
@@ -2262,7 +2262,7 @@ function Users() {
 
   return (
     <Page title="Usuarios" subtitle="Medicas y secretarias">
-      {config && <UserManager users={users} locations={config.locations} onSaved={refresh} />}
+      {config && <UserManager users={users} locations={config.locations} canManageAdministrators={profile.is_master} onSaved={refresh} />}
     </Page>
   );
 }

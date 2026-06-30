@@ -24,7 +24,8 @@ Ejecutar en SQL Editor con rol `postgres`:
 7. `supabase/06_commercial_catalog.sql`
 8. `supabase/07_dashboard_reporting.sql`
 9. `supabase/08_communications.sql`
-10. Desplegar `supabase/functions/admin-manage-user`
+10. `supabase/09_internal_user_access.sql`
+11. Desplegar `supabase/functions/admin-manage-user`
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -41,7 +42,8 @@ Para la base publicada de Cardio Ayala:
 7. `supabase/06_commercial_catalog.sql`
 8. `supabase/07_dashboard_reporting.sql`
 9. `supabase/08_communications.sql`
-10. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
+10. `supabase/09_internal_user_access.sql`
+11. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
@@ -101,6 +103,9 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 ## Administracion de usuarios
 
 - Auth y `profiles` se sincronizan exclusivamente mediante `admin-manage-user`.
+- Las altas internas se confirman con Admin API y no dependen de correos.
+- La clave inicial o el DNI blanqueado son provisorios y activan `must_change_password`.
+- Administradores gestionan solo Medicos y Secretarias; la jerarquia superior queda reservada al Maestro.
 - El bloqueo es logico: se bloquea Auth y se marca `profiles.active = false`.
 - No se usa borrado fisico para usuarios operativos.
 - El usuario Maestro no puede bloquearse, desactivarse ni cambiar privilegios.

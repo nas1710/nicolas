@@ -114,7 +114,7 @@ values
   ('UUID_DE_MEDICA', 'medica.demo@example.com', 'Dra. Demo', 'MEDICA_ADMIN', null);
 ```
 
-Despues, desde la app, la medica/admin puede entrar a **Ajustes > Usuarios** y crear secretarias o medicos nuevos.
+Despues, desde la app, el Maestro o un Administrador puede entrar a **Usuarios** y crear accesos internos.
 
 ## Permisos
 
@@ -124,7 +124,12 @@ Despues, desde la app, la medica/admin puede entrar a **Ajustes > Usuarios** y c
 - edita todo
 - ve evoluciones clinicas, diagnosticos y notas medicas
 - ve auditoria
-- administra sedes, obras sociales y usuarios desde la app
+- no administra seguridad ni usuarios
+
+`ADMINISTRADOR`:
+
+- administra medicos y secretarias, sin ver ni modificar al Maestro u otros Administradores
+- no puede crear, degradar, bloquear ni eliminar Administradores
 
 `SECRETARIA`:
 
@@ -229,10 +234,21 @@ Abrir la URL local de Vite.
 
 ## Alta y blanqueo de usuarios
 
-La medica/admin crea usuarios desde **Usuarios**. El alta confirma internamente
-el email y no depende del correo de confirmacion de Supabase. Al blanquear una
-clave, la contrasena provisoria pasa a ser el DNI del usuario y la app obliga a
-reemplazarla en el siguiente ingreso.
+El Maestro crea cualquier acceso desde **Usuarios**. Un Administrador puede
+crear y administrar Medicos y Secretarias, pero nunca al Maestro ni a otro
+Administrador. El alta confirma internamente el email mediante la Admin API y
+no envia ni espera un correo de confirmacion.
+
+La clave inicial se muestra al finalizar el alta y queda marcada como
+provisoria. En el primer ingreso la app obliga a reemplazarla antes de mostrar
+la operacion normal. **Blanquear clave** usa el DNI sin puntos como clave
+provisoria, reactiva y confirma tecnicamente la cuenta y vuelve a exigir el
+cambio en el siguiente ingreso.
+
+Si un usuario queda trabado, verificar que tenga DNI y usar **Blanquear clave**
+seguido de **Reactivar**. No hace falta reenviar correos ni editar Auth a mano.
+Las altas, ediciones, bloqueos, reactivaciones, blanqueos y eliminaciones
+permitidas se registran en `audit_logs`.
 
 Publicar la funcion segura desde una terminal con Supabase CLI:
 

@@ -1167,13 +1167,8 @@ export async function updateHoliday(id: string, input: { date: string; name: str
 }
 
 export async function listProfiles() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*, location:locations(*)")
-    .eq("is_master", false)
-    .order("full_name");
-  throwIfError(error);
-  return (data || []) as Profile[];
+  const data = await invokeUserAdministration({ action: "list_users" });
+  return (data.profiles || []) as Profile[];
 }
 
 export async function createProfile(input: ProfileInput) {
@@ -1204,7 +1199,7 @@ export async function createUserWithLogin(input: NewUserInput) {
     location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
     document_number: input.document_number?.replace(/\D/g, "") || null
   });
-  return data.profile as Profile;
+  return data as { profile: Profile; temporary_password: string };
 }
 
 async function invokeUserAdministration(body: Record<string, unknown>) {

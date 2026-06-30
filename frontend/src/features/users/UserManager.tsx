@@ -13,7 +13,7 @@ import {
   updateProfile
 } from "../../api/supabase";
 
-export function UserManager({ users, locations, onSaved }: { users: Profile[]; locations: Location[]; onSaved: () => Promise<void> }) {
+export function UserManager({ users, locations, canManageAdministrators, onSaved }: { users: Profile[]; locations: Location[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "" });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -34,7 +34,7 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
       const created = await createUserWithLogin(form);
       setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "" });
       await onSaved();
-      setMessage(`${created.full_name} fue dado de alta y ya puede ingresar con su clave inicial.`);
+      setMessage(`${created.profile.full_name} ya puede ingresar. Clave provisoria: ${created.temporary_password}. Debera cambiarla en el primer ingreso.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el usuario.");
     } finally {
@@ -58,7 +58,7 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
               <select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
                 <option value="SECRETARIA">Secretaria</option>
                 <option value="MEDICO">Medico</option>
-                <option value="ADMINISTRADOR">Administrador</option>
+                {canManageAdministrators && <option value="ADMINISTRADOR">Administrador</option>}
               </select>
             </label>
             <label>Consultorio
@@ -82,14 +82,14 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
         </div>
       </div>
       <div className="list user-list">
-        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} onSaved={onSaved} />)}
+        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} canManageAdministrators={canManageAdministrators} onSaved={onSaved} />)}
         {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
       </div>
     </section>
   );
 }
 
-function UserRow({ user, locations, onSaved }: { user: Profile; locations: Location[]; onSaved: () => Promise<void> }) {
+function UserRow({ user, locations, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Omit<ProfileInput, "id">>({
     email: user.email,
     full_name: user.full_name,
@@ -180,7 +180,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
             </label>
           )}
           {!user.is_master && <button type="button" className="secondary-action" onClick={() => setEditing(true)}>Editar</button>}
-          {!user.is_master && <button type="button" className="danger-action" disabled={changingStatus} onClick={() => void deleteUser()}>Eliminar</button>}
+          {canManageAdministrators && !user.is_master && <button type="button" className="danger-action" disabled={changingStatus} onClick={() => void deleteUser()}>Eliminar</button>}
         </div>
         {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
       </article>
@@ -194,7 +194,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
         <label>Email<input value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></label>
         <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={event => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", event.target.value) })} inputMode="numeric" /></label>
         <label>Rol<select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
-          <option value="SECRETARIA">Secretaria</option><option value="MEDICO">Medico</option><option value="ADMINISTRADOR">Administrador</option>
+          <option value="SECRETARIA">Secretaria</option><option value="MEDICO">Medico</option>{canManageAdministrators && <option value="ADMINISTRADOR">Administrador</option>}
         </select></label>
         <label>Consultorio<select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role !== "SECRETARIA"}>
           <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -204,7 +204,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
         <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
         <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
         <button type="button" onClick={() => void resetPassword()}>Blanquear clave</button>
-        <button type="button" className="danger-action" onClick={() => void deleteUser()}>Eliminar usuario</button>
+        {canManageAdministrators && <button type="button" className="danger-action" onClick={() => void deleteUser()}>Eliminar usuario</button>}
       </div>
       {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
     </article>

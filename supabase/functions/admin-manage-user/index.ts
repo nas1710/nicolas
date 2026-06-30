@@ -57,18 +57,46 @@ Deno.serve(async request => {
       .select("id, role, active, is_master")
       .eq("id", authData.user.id)
       .single();
-    if (requesterError || !requester?.active || !requester.is_master) {
-      throw new Error("Solo el usuario Maestro puede administrar accesos.");
+    const requesterCanManage = requester?.is_master || requester?.role === "ADMINISTRADOR";
+    if (requesterError || !requester?.active || !requesterCanManage) {
+      throw new Error("No tenes permisos para administrar accesos.");
     }
 
     const body = await request.json();
     const action = text(body.action);
+
+    const audit = async (auditAction: string, entityId: string | null, before: unknown, after: unknown) => {
+      const { error } = await adminClient.from("audit_logs").insert({
+        action: auditAction,
+        entity: "profiles",
+        entity_id: entityId,
+        before,
+        after,
+        user_id: requester.id
+      });
+      if (error) console.error("No se pudo registrar auditoria", error.message);
+    };
+
+    if (action === "list_users") {
+      let query = adminClient
+        .from("profiles")
+        .select("*, location:locations(*)")
+        .eq("is_master", false)
+        .order("full_name");
+      if (!requester.is_master) query = query.not("role", "in", "(ADMINISTRADOR,MEDICA_ADMIN)");
+      const { data: profiles, error } = await query;
+      if (error) throw error;
+      return json({ profiles: profiles || [] }, corsHeaders);
+    }
 
     if (action === "create_user") {
       const email = text(body.email).toLowerCase();
       const password = String(body.password || "");
       const fullName = text(body.full_name);
       const role = managedRole(body.role);
+      if (!requester.is_master && (role === "ADMINISTRADOR" || role === "MEDICA_ADMIN")) {
+        throw new Error("Solo el usuario Maestro puede crear administradores.");
+      }
       const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
       const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");
@@ -124,7 +152,8 @@ Deno.serve(async request => {
         if (!existing) await adminClient.auth.admin.deleteUser(authUser.id);
         throw profileError;
       }
-      return json({ profile }, corsHeaders);
+      await audit("USER_CREATE", authUser.id, null, { email, full_name: fullName, role, location_id: locationId, active: true });
+      return json({ profile, temporary_password: password }, corsHeaders);
     }
 
     const targetId = text(body.user_id);
@@ -135,6 +164,10 @@ Deno.serve(async request => {
       .eq("id", targetId)
       .single();
     if (targetError || !target) throw new Error("Usuario no encontrado.");
+    if (target.is_master) throw new Error("El usuario Maestro esta protegido.");
+    if (!requester.is_master && (target.role === "ADMINISTRADOR" || target.role === "MEDICA_ADMIN")) {
+      throw new Error("Solo el usuario Maestro puede administrar a otro administrador.");
+    }
 
     if (action === "reset_password") {
       const temporaryPassword = normalizedDocument(target.document_number);
@@ -150,6 +183,7 @@ Deno.serve(async request => {
         .update({ must_change_password: true, active: true })
         .eq("id", target.id);
       if (updateProfileError) throw updateProfileError;
+      await audit("USER_PASSWORD_RESET", target.id, null, { must_change_password: true, active: true });
       return json({ temporary_password: temporaryPassword }, corsHeaders);
     }
 
@@ -169,12 +203,12 @@ Deno.serve(async request => {
       }
       const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(target.id);
       if (authDeleteError) throw authDeleteError;
+      await audit("USER_DELETE", target.id, target, null);
       return json({ deleted: true }, corsHeaders);
     }
 
     if (action === "set_active") {
       const active = body.active === true;
-      if (target.is_master) throw new Error("El usuario Maestro no puede bloquearse ni desactivarse.");
       if (!active && target.id === requester.id) throw new Error("No podes bloquear tu propio acceso.");
 
       if (active && target.role === "SECRETARIA" && !target.location_id) {
@@ -194,6 +228,7 @@ Deno.serve(async request => {
           await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none" });
           throw profileError;
         }
+        await audit("USER_BLOCK", target.id, target, { ...target, active: false });
         return json({ profile }, corsHeaders);
       }
 
@@ -209,14 +244,17 @@ Deno.serve(async request => {
         await adminClient.from("profiles").update({ active: false }).eq("id", target.id);
         throw unbanError;
       }
+      await audit("USER_REACTIVATE", target.id, target, { ...target, active: true });
       return json({ profile }, corsHeaders);
     }
 
     if (action === "update_user") {
-      if (target.is_master) throw new Error("Los datos y privilegios del usuario Maestro estan protegidos.");
       const email = text(body.email).toLowerCase();
       const fullName = text(body.full_name);
       const role = managedRole(body.role);
+      if (!requester.is_master && (role === "ADMINISTRADOR" || role === "MEDICA_ADMIN")) {
+        throw new Error("Solo el usuario Maestro puede asignar el rol Administrador.");
+      }
       const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
       const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");
@@ -252,6 +290,7 @@ Deno.serve(async request => {
         });
         throw profileError;
       }
+      await audit("USER_UPDATE", target.id, target, { email, full_name: fullName, role, location_id: locationId, document_number: documentNumber });
       return json({ profile }, corsHeaders);
     }
 
