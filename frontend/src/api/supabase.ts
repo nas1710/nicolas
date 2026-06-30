@@ -70,6 +70,11 @@ export type PublicBookingSlot = {
   location_address: string | null;
 };
 
+export type PublicBookingDate = {
+  date: string;
+  available_count: number;
+};
+
 export type PublicBookingInput = {
   doctor_id: string;
   starts_at: string;
@@ -78,9 +83,9 @@ export type PublicBookingInput = {
   last_name: string;
   document_type: IdentityDocumentType;
   document: string;
-  birth_date?: string;
   phone?: string;
   email?: string;
+  insurance_plan_id?: string;
   website?: string;
 };
 
@@ -727,6 +732,29 @@ export async function listPublicBookingSlots(doctorId: string, date: string, dur
   return (data || []) as PublicBookingSlot[];
 }
 
+export async function listPublicBookingDates(doctorId: string, from: string, to: string, durationMin: number) {
+  const { data, error } = await supabase.rpc("public_booking_available_dates", {
+    p_doctor_id: doctorId,
+    p_from: from,
+    p_to: to,
+    p_duration_min: durationMin
+  });
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("El almanaque de turnos se esta configurando. Volve a intentar en unos minutos.");
+  }
+  throwIfError(error);
+  return (data || []) as PublicBookingDate[];
+}
+
+export async function listPublicBookingInsurancePlans() {
+  const { data, error } = await supabase.rpc("public_booking_insurance_plans");
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("Las obras sociales se estan configurando. Volve a intentar en unos minutos.");
+  }
+  throwIfError(error);
+  return (data || []) as Pick<InsurancePlan, "id" | "name">[];
+}
+
 export async function requestPublicBooking(input: PublicBookingInput) {
   const document = normalizeDocumentNumber(input.document_type, input.document);
   const { data, error } = await supabase.rpc("public_request_appointment", {
@@ -737,9 +765,9 @@ export async function requestPublicBooking(input: PublicBookingInput) {
     p_last_name: formatProperName(input.last_name),
     p_document_type: input.document_type,
     p_document: document,
-    p_birth_date: parseBirthDate(input.birth_date),
     p_phone: input.phone?.trim() || null,
     p_email: input.email?.trim() || null,
+    p_insurance_plan_id: input.insurance_plan_id || null,
     p_website: input.website || ""
   });
   if (error?.message?.includes("schema cache")) {

@@ -232,6 +232,19 @@ as $$
   order by profile.full_name;
 $$;
 
+create or replace function public.public_booking_insurance_plans()
+returns table (id uuid, name text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select plan.id, plan.name
+  from public.insurance_plans plan
+  where plan.active
+  order by plan.name;
+$$;
+
 create or replace function public.public_booking_slots(
   p_doctor_id uuid,
   p_date date,
@@ -288,6 +301,32 @@ as $$
   order by generated.slot_start;
 $$;
 
+create or replace function public.public_booking_available_dates(
+  p_doctor_id uuid,
+  p_from date,
+  p_to date,
+  p_duration_min int
+)
+returns table (date date, available_count bigint)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select candidate.day::date, count(slot.starts_at)::bigint
+  from generate_series(
+    greatest(p_from, (now() at time zone 'America/Argentina/Buenos_Aires')::date),
+    least(p_to, (now() at time zone 'America/Argentina/Buenos_Aires')::date + 90),
+    interval '1 day'
+  ) candidate(day)
+  cross join lateral public.public_booking_slots(p_doctor_id, candidate.day::date, p_duration_min) slot
+  group by candidate.day
+  having count(slot.starts_at) > 0
+  order by candidate.day;
+$$;
+
+drop function if exists public.public_request_appointment(uuid, timestamptz, text[], text, text, text, text, date, text, text, text);
+
 create or replace function public.public_request_appointment(
   p_doctor_id uuid,
   p_starts_at timestamptz,
@@ -296,9 +335,9 @@ create or replace function public.public_request_appointment(
   p_last_name text,
   p_document_type text,
   p_document text,
-  p_birth_date date,
   p_phone text,
   p_email text,
+  p_insurance_plan_id uuid,
   p_website text default ''
 )
 returns jsonb
@@ -320,7 +359,6 @@ declare
   target_appointment_id uuid;
   doctor_name text;
   type_marker text;
-  existing_birth_date date;
 begin
   if btrim(coalesce(p_website, '')) <> '' then raise exception 'Solicitud no valida.'; end if;
   if p_starts_at <= now() then raise exception 'Elegir un horario futuro.'; end if;
@@ -344,6 +382,12 @@ begin
     else upper(regexp_replace(btrim(coalesce(p_document, '')), '[^A-Za-z0-9-]', '', 'g'))
   end;
   if clean_document = '' then raise exception 'El numero de documento es obligatorio.'; end if;
+
+  if p_insurance_plan_id is not null and not exists (
+    select 1 from public.insurance_plans plan where plan.id = p_insurance_plan_id and plan.active
+  ) then
+    raise exception 'La obra social seleccionada ya no esta disponible.';
+  end if;
 
   perform pg_advisory_xact_lock(hashtext(p_doctor_id::text || p_starts_at::text));
 
@@ -369,22 +413,24 @@ begin
       and appointment.status <> 'CANCELADO'
   ) >= 3 then raise exception 'Se alcanzo el limite de solicitudes. Comunicarse con el consultorio.'; end if;
 
-  select patient.id, patient.birth_date into target_patient_id, existing_birth_date
+  select patient.id into target_patient_id
   from public.patients patient
   where patient.document_type = clean_document_type and patient.document = clean_document
   for update;
 
-  if target_patient_id is not null and existing_birth_date is not null and p_birth_date is not null and existing_birth_date <> p_birth_date then
-    raise exception 'Los datos no coinciden con el documento registrado. Comunicarse con el consultorio.';
-  end if;
-
   if target_patient_id is null then
     insert into public.patients (
-      first_name, last_name, document_type, document, birth_date, phone, email, status, location_id
+      first_name, last_name, document_type, document, phone, email, insurance_plan_id, status
     ) values (
       initcap(lower(btrim(p_first_name))), initcap(lower(btrim(p_last_name))), clean_document_type, clean_document,
-      p_birth_date, nullif(clean_phone, ''), nullif(clean_email, ''), 'activo', target_location_id
+      nullif(clean_phone, ''), nullif(clean_email, ''), p_insurance_plan_id, 'activo'
     ) returning id into target_patient_id;
+  else
+    update public.patients
+    set phone = coalesce(nullif(clean_phone, ''), phone),
+        email = coalesce(nullif(clean_email, ''), email),
+        insurance_plan_id = coalesce(p_insurance_plan_id, insurance_plan_id)
+    where id = target_patient_id;
   end if;
 
   insert into public.patient_locations(patient_id, location_id)
@@ -412,11 +458,15 @@ end;
 $$;
 
 revoke all on function public.public_booking_doctors() from public;
+revoke all on function public.public_booking_insurance_plans() from public;
 revoke all on function public.public_booking_slots(uuid, date, int) from public;
-revoke all on function public.public_request_appointment(uuid, timestamptz, text[], text, text, text, text, date, text, text, text) from public;
+revoke all on function public.public_booking_available_dates(uuid, date, date, int) from public;
+revoke all on function public.public_request_appointment(uuid, timestamptz, text[], text, text, text, text, text, text, uuid, text) from public;
 grant execute on function public.public_booking_doctors() to anon, authenticated;
+grant execute on function public.public_booking_insurance_plans() to anon, authenticated;
 grant execute on function public.public_booking_slots(uuid, date, int) to anon, authenticated;
-grant execute on function public.public_request_appointment(uuid, timestamptz, text[], text, text, text, text, date, text, text, text) to anon, authenticated;
+grant execute on function public.public_booking_available_dates(uuid, date, date, int) to anon, authenticated;
+grant execute on function public.public_request_appointment(uuid, timestamptz, text[], text, text, text, text, text, text, uuid, text) to anon, authenticated;
 
 notify pgrst, 'reload schema';
 

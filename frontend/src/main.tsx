@@ -26,7 +26,9 @@ import {
   listAppointments,
   listAttachments,
   listPatients,
+  listPublicBookingDates,
   listPublicBookingDoctors,
+  listPublicBookingInsurancePlans,
   listPublicBookingSlots,
   listProfiles,
   listReports,
@@ -42,6 +44,7 @@ import {
   parseBirthDate,
   Profile,
   ProfileInput,
+  PublicBookingDate,
   PublicBookingDoctor,
   PublicBookingResult,
   PublicBookingSlot,
@@ -227,9 +230,12 @@ function PublicBookingPage() {
   const maxDateValue = new Date();
   maxDateValue.setDate(maxDateValue.getDate() + 90);
   const [doctors, setDoctors] = useState<PublicBookingDoctor[]>([]);
+  const [insurancePlans, setInsurancePlans] = useState<Pick<InsurancePlan, "id" | "name">[]>([]);
   const [doctorId, setDoctorId] = useState("");
   const [types, setTypes] = useState<AppointmentTypeCode[]>(["CONSULTA"]);
   const [date, setDate] = useState(today);
+  const [calendarMonth, setCalendarMonth] = useState(today.slice(0, 7));
+  const [availableDates, setAvailableDates] = useState<PublicBookingDate[]>([]);
   const [slots, setSlots] = useState<PublicBookingSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<PublicBookingSlot | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -242,22 +248,44 @@ function PublicBookingPage() {
     last_name: "",
     document_type: "DNI" as IdentityDocumentType,
     document: "",
-    birth_date: "",
     phone: "",
     email: "",
+    insurance_plan_id: "",
     website: ""
   });
   const duration = publicBookingDuration(types);
 
   useEffect(() => {
-    listPublicBookingDoctors()
-      .then(items => {
-        setDoctors(items);
-        if (items.length === 1) setDoctorId(items[0].id);
+    Promise.all([listPublicBookingDoctors(), listPublicBookingInsurancePlans()])
+      .then(([doctorItems, planItems]) => {
+        setDoctors(doctorItems);
+        setInsurancePlans(planItems);
+        if (doctorItems.length === 1) setDoctorId(doctorItems[0].id);
       })
       .catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda publica."))
       .finally(() => setLoadingCatalog(false));
   }, []);
+
+  useEffect(() => {
+    if (!doctorId || types.length === 0) {
+      setAvailableDates([]);
+      return;
+    }
+    const { first, last } = calendarMonthBounds(calendarMonth, today, toDateInputValue(maxDateValue));
+    if (!first || !last) {
+      setAvailableDates([]);
+      return;
+    }
+    let cancelled = false;
+    listPublicBookingDates(doctorId, first, last, duration)
+      .then(items => {
+        if (cancelled) return;
+        setAvailableDates(items);
+        if (!items.some(item => item.date === date) && items[0]) setDate(items[0].date);
+      })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar el almanaque."); });
+    return () => { cancelled = true; };
+  }, [doctorId, calendarMonth, duration]);
 
   useEffect(() => {
     setSelectedSlot(null);
@@ -281,11 +309,6 @@ function PublicBookingPage() {
     if (!selectedSlot) return setError("Elegir un horario disponible.");
     if (!patient.first_name.trim() || !patient.last_name.trim()) return setError("Nombre y apellido son obligatorios.");
     if (!normalizeDocumentNumber(patient.document_type, patient.document)) return setError("Ingresar el numero de documento.");
-    try {
-      parseBirthDate(patient.birth_date);
-    } catch (err) {
-      return setError(err instanceof Error ? err.message : "Fecha de nacimiento invalida.");
-    }
     if (!patient.phone.trim() && !patient.email.trim()) return setError("Ingresar telefono o email para poder confirmar el turno.");
 
     setSaving(true);
@@ -362,9 +385,15 @@ function PublicBookingPage() {
             <AppointmentTypePicker value={types} onChange={setTypes} />
 
             <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
-            <label className="public-date-field">Fecha
-              <input type="date" min={today} max={toDateInputValue(maxDateValue)} value={date} onChange={event => setDate(event.target.value)} />
-            </label>
+            <PublicBookingCalendar
+              month={calendarMonth}
+              selectedDate={date}
+              availableDates={availableDates}
+              minDate={today}
+              maxDate={toDateInputValue(maxDateValue)}
+              onMonthChange={setCalendarMonth}
+              onSelect={setDate}
+            />
             <div className="public-slot-grid">
               {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
               {!loadingSlots && doctorId && slots.map(slot => {
@@ -387,8 +416,11 @@ function PublicBookingPage() {
               <label>Apellido<input value={patient.last_name} onChange={event => setPatient({ ...patient, last_name: event.target.value })} onBlur={() => setPatient(current => ({ ...current, last_name: formatProperName(current.last_name) }))} /></label>
               <label>Tipo de documento<select value={patient.document_type} onChange={event => setPatient({ ...patient, document_type: event.target.value as IdentityDocumentType, document: "" })}>{documentTypeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               <label>Numero de documento<input value={formatDocumentNumber(patient.document_type, patient.document, "")} onChange={event => setPatient({ ...patient, document: normalizeDocumentNumber(patient.document_type, event.target.value) })} inputMode="numeric" /></label>
-              <label>Fecha de nacimiento<input value={patient.birth_date} onChange={event => setPatient({ ...patient, birth_date: formatBirthDateInput(event.target.value) })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
               <label>WhatsApp<input value={patient.phone} onChange={event => setPatient({ ...patient, phone: event.target.value })} placeholder="549..." inputMode="tel" /></label>
+              <label>Obra social<select value={patient.insurance_plan_id} onChange={event => setPatient({ ...patient, insurance_plan_id: event.target.value })}>
+                <option value="">Particular / sin obra social</option>
+                {insurancePlans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+              </select></label>
               <label className="full-field">Email<input type="email" value={patient.email} onChange={event => setPatient({ ...patient, email: event.target.value })} /></label>
               <label className="booking-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={patient.website} onChange={event => setPatient({ ...patient, website: event.target.value })} /></label>
             </div>
@@ -400,6 +432,64 @@ function PublicBookingPage() {
       </main>
     </div>
   );
+}
+
+function PublicBookingCalendar({ month, selectedDate, availableDates, minDate, maxDate, onMonthChange, onSelect }: {
+  month: string;
+  selectedDate: string;
+  availableDates: PublicBookingDate[];
+  minDate: string;
+  maxDate: string;
+  onMonthChange: (month: string) => void;
+  onSelect: (date: string) => void;
+}) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const monthDate = new Date(year, monthNumber - 1, 1);
+  const firstWeekday = (monthDate.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthNumber, 0).getDate();
+  const available = new Map(availableDates.map(item => [item.date, item.available_count]));
+  const previousMonth = toDateInputValue(new Date(year, monthNumber - 2, 1)).slice(0, 7);
+  const nextMonth = toDateInputValue(new Date(year, monthNumber, 1)).slice(0, 7);
+  const canGoPrevious = `${previousMonth}-01` >= minDate.slice(0, 7) + "-01";
+  const canGoNext = `${nextMonth}-01` <= maxDate.slice(0, 7) + "-01";
+
+  return (
+    <div className="public-calendar" aria-label="Fechas disponibles">
+      <div className="public-calendar-head">
+        <button type="button" aria-label="Mes anterior" disabled={!canGoPrevious} onClick={() => onMonthChange(previousMonth)}>&lt;</button>
+        <strong>{monthDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</strong>
+        <button type="button" aria-label="Mes siguiente" disabled={!canGoNext} onClick={() => onMonthChange(nextMonth)}>&gt;</button>
+      </div>
+      <div className="public-calendar-grid public-calendar-weekdays">
+        {['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'].map(day => <span key={day}>{day}</span>)}
+      </div>
+      <div className="public-calendar-grid">
+        {Array.from({ length: firstWeekday }, (_, index) => <span className="calendar-empty" key={`empty-${index}`} />)}
+        {Array.from({ length: daysInMonth }, (_, index) => {
+          const day = index + 1;
+          const key = toDateInputValue(new Date(year, monthNumber - 1, day));
+          const count = available.get(key) || 0;
+          const enabled = key >= minDate && key <= maxDate && count > 0;
+          return (
+            <button type="button" key={key} disabled={!enabled} className={selectedDate === key ? "available selected" : enabled ? "available" : ""} onClick={() => onSelect(key)}>
+              <strong>{day}</strong>
+              {count > 0 && <small>{count} libres</small>}
+            </button>
+          );
+        })}
+      </div>
+      <p><span /> Días con turnos disponibles</p>
+    </div>
+  );
+}
+
+function calendarMonthBounds(month: string, minDate: string, maxDate: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstOfMonth = toDateInputValue(new Date(year, monthNumber - 1, 1));
+  const lastOfMonth = toDateInputValue(new Date(year, monthNumber, 0));
+  const first = firstOfMonth < minDate ? minDate : firstOfMonth;
+  const last = lastOfMonth > maxDate ? maxDate : lastOfMonth;
+  return first <= last ? { first, last } : { first: "", last: "" };
 }
 
 function publicBookingDuration(types: AppointmentTypeCode[]) {

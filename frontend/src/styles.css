@@ -2360,6 +2360,108 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   margin-bottom: 12px;
 }
 
+.public-calendar {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #cbdadd;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.public-calendar-head {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.public-calendar-head strong {
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.public-calendar-head button {
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #c7d5d8;
+  background: white;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.public-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.public-calendar-weekdays {
+  margin-bottom: 5px;
+}
+
+.public-calendar-weekdays span {
+  color: #66777f;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.public-calendar-grid button,
+.calendar-empty {
+  min-height: 52px;
+}
+
+.public-calendar-grid button {
+  display: grid;
+  place-content: center;
+  gap: 1px;
+  padding: 4px 2px;
+  border: 1px solid #dce4e6;
+  background: #edf1f2;
+  color: #8a969b;
+}
+
+.public-calendar-grid button.available {
+  border-color: #8ccbc1;
+  background: #e3f5f0;
+  color: #075b4c;
+}
+
+.public-calendar-grid button.available:hover {
+  border-color: #176f78;
+  background: #ccebe5;
+}
+
+.public-calendar-grid button.selected {
+  border-color: #176f78;
+  background: #176f78;
+  color: white;
+  box-shadow: 0 0 0 2px white, 0 0 0 4px #176f78;
+}
+
+.public-calendar-grid button small {
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.public-calendar > p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 9px 0 0;
+  color: #66777f;
+  font-size: 11px;
+}
+
+.public-calendar > p span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6ac6b5;
+}
+
 .public-slot-grid {
   min-height: 92px;
   display: grid;
@@ -2854,6 +2956,23 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
 
   .public-slot {
     padding: 8px;
+  }
+
+  .public-calendar {
+    padding: 9px 7px;
+  }
+
+  .public-calendar-grid {
+    gap: 3px;
+  }
+
+  .public-calendar-grid button,
+  .calendar-empty {
+    min-height: 46px;
+  }
+
+  .public-calendar-grid button small {
+    font-size: 8px;
   }
 
   .public-confirmation dl div {
