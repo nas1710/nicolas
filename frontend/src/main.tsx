@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Appointment,
@@ -13,14 +13,11 @@ import {
   createLocation,
   deleteLocation,
   createPatient,
-  createUserWithLogin,
   formatBirthDateInput,
   formatDocumentNumber,
   formatProperName,
   getConfiguration,
-  getBuenosAiresClock,
   getCurrentProfile,
-  getRememberSessionPreference,
   getPatient,
   Holiday,
   IdentityDocumentType,
@@ -28,10 +25,6 @@ import {
   listAppointments,
   listAttachments,
   listPatients,
-  listPublicBookingDates,
-  listPublicBookingDoctors,
-  listPublicBookingInsurancePlans,
-  listPublicBookingSlots,
   listProfiles,
   listReports,
   listStudies,
@@ -45,21 +38,9 @@ import {
   PatientInput,
   parseBirthDate,
   Profile,
-  ProfileInput,
-  PublicBookingDate,
-  PublicBookingDoctor,
-  PublicBookingResult,
-  PublicBookingSlot,
-  requestPasswordReset,
-  requestPublicBooking,
-  requestUserAccess,
-  resetUserPasswordToDocument,
-  resendConfirmationEmail,
   Report,
-  signIn,
   signOut,
   setPatientActive,
-  setProfileActive,
   Study,
   supabase,
   updateInsurancePlan,
@@ -67,13 +48,31 @@ import {
   updateAvailability,
   updateHoliday,
   updateLocation,
-  updateCurrentPassword,
   updatePatientContact,
-  updateProfile,
   uploadPatientAttachment,
   createSignedAttachmentUrl,
   Attachment
 } from "./api/supabase";
+import { Modal, NavButton, Page, Stat, Table } from "./components/ui";
+import {
+  AppointmentTypeCode,
+  AppointmentTypeLabels,
+  AppointmentTypePicker,
+  appointmentTypeClass,
+  appointmentTypeLabel,
+  appointmentTypeOptions,
+  appointmentTypeValue,
+  buildAppointmentTypePayload,
+  decodeAppointmentTypes,
+  primaryAppointmentTypeClass,
+  visibleAppointmentReason
+} from "./features/appointments/appointmentTypes";
+import { Login, PasswordRecovery } from "./features/auth/AuthScreens";
+import { UserManager } from "./features/users/UserManager";
+import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
+import { PublicBookingPage } from "./pages/PublicBookingPage";
+import { toDateInputValue } from "./utils/dates";
+import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
 import "./styles.css";
 
 type View = "inicio" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios";
@@ -223,454 +222,6 @@ function App() {
         {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
         {view === "usuarios" && profile.role === "MEDICA_ADMIN" && <Users key={`usuarios-${viewResetKey}`} />}
       </main>
-    </div>
-  );
-}
-
-function PublicBookingPage() {
-  const officialClock = useBuenosAiresClock();
-  const today = officialClock.today;
-  const maxDateValue = new Date(`${today}T12:00:00`);
-  maxDateValue.setDate(maxDateValue.getDate() + 90);
-  const [doctors, setDoctors] = useState<PublicBookingDoctor[]>([]);
-  const [insurancePlans, setInsurancePlans] = useState<Pick<InsurancePlan, "id" | "name">[]>([]);
-  const [doctorId, setDoctorId] = useState("");
-  const [types, setTypes] = useState<AppointmentTypeCode[]>(["CONSULTA"]);
-  const [date, setDate] = useState(today);
-  const [calendarMonth, setCalendarMonth] = useState(today.slice(0, 7));
-  const [availableDates, setAvailableDates] = useState<PublicBookingDate[]>([]);
-  const [loadingDates, setLoadingDates] = useState(false);
-  const [slots, setSlots] = useState<PublicBookingSlot[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<PublicBookingSlot | null>(null);
-  const [loadingCatalog, setLoadingCatalog] = useState(true);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<PublicBookingResult | null>(null);
-  const [patient, setPatient] = useState({
-    first_name: "",
-    last_name: "",
-    document_type: "DNI" as IdentityDocumentType,
-    document: "",
-    phone: "",
-    email: "",
-    insurance_plan_id: "",
-    website: ""
-  });
-  const duration = publicBookingDuration(types);
-
-  useEffect(() => {
-    Promise.all([listPublicBookingDoctors(), listPublicBookingInsurancePlans()])
-      .then(([doctorItems, planItems]) => {
-        setDoctors(doctorItems);
-        setInsurancePlans(planItems);
-        if (doctorItems.length === 1) setDoctorId(doctorItems[0].id);
-      })
-      .catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda publica."))
-      .finally(() => setLoadingCatalog(false));
-  }, []);
-
-  useEffect(() => {
-    if (!doctorId || types.length === 0) {
-      setAvailableDates([]);
-      setLoadingDates(false);
-      return;
-    }
-    const { first, last } = calendarMonthBounds(calendarMonth, today, toDateInputValue(maxDateValue));
-    if (!first || !last) {
-      setAvailableDates([]);
-      setLoadingDates(false);
-      return;
-    }
-    let cancelled = false;
-    setLoadingDates(true);
-    listPublicBookingDates(doctorId, first, last, duration)
-      .then(items => {
-        if (cancelled) return;
-        setAvailableDates(items);
-        if (!items.some(item => item.date === date) && items[0]) setDate(items[0].date);
-      })
-      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar el almanaque."); })
-      .finally(() => { if (!cancelled) setLoadingDates(false); });
-    return () => { cancelled = true; };
-  }, [doctorId, calendarMonth, duration]);
-
-  useEffect(() => {
-    setSelectedSlot(null);
-    if (!doctorId || !date || types.length === 0) {
-      setSlots([]);
-      return;
-    }
-    setLoadingSlots(true);
-    setError("");
-    let cancelled = false;
-    listPublicBookingSlots(doctorId, date, duration)
-      .then(items => { if (!cancelled) setSlots(items); })
-      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudieron consultar los horarios."); })
-      .finally(() => { if (!cancelled) setLoadingSlots(false); });
-    return () => { cancelled = true; };
-  }, [doctorId, date, duration]);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!doctorId) return setError("Elegir profesional.");
-    if (!selectedSlot) return setError("Elegir un horario disponible.");
-    if (!patient.first_name.trim() || !patient.last_name.trim()) return setError("Nombre y apellido son obligatorios.");
-    if (!normalizeDocumentNumber(patient.document_type, patient.document)) return setError("Ingresar el numero de documento.");
-    if (!patient.phone.trim() && !patient.email.trim()) return setError("Ingresar telefono o email para poder confirmar el turno.");
-
-    setSaving(true);
-    setError("");
-    try {
-      const booking = await requestPublicBooking({
-        doctor_id: doctorId,
-        starts_at: selectedSlot.starts_at,
-        types,
-        ...patient
-      });
-      setResult(booking);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo solicitar el turno.");
-      const refreshed = await listPublicBookingSlots(doctorId, date, duration).catch(() => []);
-      setSlots(refreshed);
-      if (!refreshed.some(slot => slot.starts_at === selectedSlot.starts_at && slot.location_id === selectedSlot.location_id)) {
-        setSelectedSlot(null);
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (result) {
-    const startsAt = new Date(result.starts_at);
-    return (
-      <div className="public-booking-page">
-        <header className="public-booking-header"><span className="brand">SP</span><div><strong>Cardio Ayala</strong><small>Turnos online</small></div></header>
-        <main className="public-booking-main confirmation-view">
-          <section className="public-confirmation">
-            <span className="confirmation-mark">OK</span>
-            <h1>Solicitud recibida</h1>
-            <p>El consultorio revisara la solicitud y confirmara el turno por tus datos de contacto.</p>
-            <dl>
-              <div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div>
-              <div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div>
-              <div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</dd></div>
-              <div><dt>Consultorio</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div>
-              <div><dt>Estado</dt><dd>Pendiente de confirmacion</dd></div>
-            </dl>
-            <button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button>
-          </section>
-        </main>
-      </div>
-    );
-  }
-
-  return (
-    <div className="public-booking-page">
-      <header className="public-booking-header">
-        <span className="brand">SP</span>
-        <div><strong>Cardio Ayala</strong><small>Turnos online</small></div>
-        <a href="/">Acceso profesionales</a>
-      </header>
-      <main className="public-booking-main">
-        <div className="public-booking-title">
-          <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Elegí profesional, práctica y un horario disponible.</p></div>
-          <ol><li className="active">Agenda</li><li className={selectedSlot ? "active" : ""}>Datos</li><li>Confirmación</li></ol>
-        </div>
-
-        <form className="public-booking-layout" onSubmit={submit}>
-          <section className="public-booking-agenda">
-            <div className="booking-section-head"><span>1</span><div><h2>Profesional y práctica</h2><p>El consultorio se asigna automáticamente.</p></div></div>
-            {loadingCatalog ? <p className="empty-day">Cargando profesionales...</p> : (
-              <div className="doctor-options">
-                {doctors.map(doctor => (
-                  <button type="button" key={doctor.id} className={doctorId === doctor.id ? "doctor-option selected" : "doctor-option"} onClick={() => setDoctorId(doctor.id)}>
-                    <span className="avatar">{doctor.full_name.slice(0, 2).toUpperCase()}</span><span><strong>{doctor.full_name}</strong><small>{doctor.specialty}</small></span>
-                  </button>
-                ))}
-                {!loadingCatalog && doctors.length === 0 && <p className="notice">Todavia no hay profesionales con horarios publicados.</p>}
-              </div>
-            )}
-            <AppointmentTypePicker value={types} onChange={setTypes} />
-
-            <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
-            <PublicBookingCalendar
-              month={calendarMonth}
-              selectedDate={date}
-              availableDates={availableDates}
-              minDate={today}
-              maxDate={toDateInputValue(maxDateValue)}
-              onMonthChange={setCalendarMonth}
-              onSelect={setDate}
-            />
-            {loadingDates && <p className="public-calendar-loading" role="status">Cargando fechas disponibles...</p>}
-            <div className="public-slot-grid">
-              {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
-              {!loadingSlots && doctorId && slots.map(slot => {
-                const value = new Date(slot.starts_at);
-                return <button type="button" key={`${slot.starts_at}-${slot.location_id}`} className={selectedSlot?.starts_at === slot.starts_at ? "public-slot selected" : "public-slot"} onClick={() => setSelectedSlot(slot)}>
-                  <strong>{value.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</strong>
-                  <small>{slot.location_name}</small>
-                </button>;
-              })}
-              {!loadingSlots && doctorId && slots.length === 0 && <p className="empty-day">No hay horarios libres para esta fecha. Probá otro día.</p>}
-              {!doctorId && <p className="empty-day">Elegí un profesional para ver horarios.</p>}
-            </div>
-          </section>
-
-          <section className={`public-patient-form ${selectedSlot ? "ready" : ""}`}>
-            <div className="booking-section-head"><span>3</span><div><h2>Tus datos</h2><p>Los usamos solamente para identificarte y confirmar el turno.</p></div></div>
-            {selectedSlot && <div className="selected-public-slot"><strong>{new Date(selectedSlot.starts_at).toLocaleDateString("es-AR")} · {new Date(selectedSlot.starts_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</strong><span>{selectedSlot.location_name}</span></div>}
-            <div className="public-patient-grid">
-              <label>Nombre<input value={patient.first_name} onChange={event => setPatient({ ...patient, first_name: event.target.value })} onBlur={() => setPatient(current => ({ ...current, first_name: formatProperName(current.first_name) }))} /></label>
-              <label>Apellido<input value={patient.last_name} onChange={event => setPatient({ ...patient, last_name: event.target.value })} onBlur={() => setPatient(current => ({ ...current, last_name: formatProperName(current.last_name) }))} /></label>
-              <label>Tipo de documento<select value={patient.document_type} onChange={event => setPatient({ ...patient, document_type: event.target.value as IdentityDocumentType, document: "" })}>{documentTypeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-              <label>Numero de documento<input value={formatDocumentNumber(patient.document_type, patient.document, "")} onChange={event => setPatient({ ...patient, document: normalizeDocumentNumber(patient.document_type, event.target.value) })} inputMode="numeric" /></label>
-              <label>WhatsApp<input value={patient.phone} onChange={event => setPatient({ ...patient, phone: event.target.value })} placeholder="549..." inputMode="tel" /></label>
-              <label>Obra social<select value={patient.insurance_plan_id} onChange={event => setPatient({ ...patient, insurance_plan_id: event.target.value })}>
-                <option value="">Particular / sin obra social</option>
-                {insurancePlans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-              </select></label>
-              <label className="full-field">Email<input type="email" value={patient.email} onChange={event => setPatient({ ...patient, email: event.target.value })} /></label>
-              <label className="booking-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={patient.website} onChange={event => setPatient({ ...patient, website: event.target.value })} /></label>
-            </div>
-            {error && <p className="error public-booking-error">{error}</p>}
-            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Enviando solicitud..." : "Solicitar turno"}</button>
-            <small className="privacy-copy">La solicitud queda pendiente hasta que el consultorio la confirme.</small>
-          </section>
-        </form>
-      </main>
-    </div>
-  );
-}
-
-function PublicBookingCalendar({ month, selectedDate, availableDates, minDate, maxDate, onMonthChange, onSelect }: {
-  month: string;
-  selectedDate: string;
-  availableDates: PublicBookingDate[];
-  minDate: string;
-  maxDate: string;
-  onMonthChange: (month: string) => void;
-  onSelect: (date: string) => void;
-}) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const monthDate = new Date(year, monthNumber - 1, 1);
-  const firstWeekday = (monthDate.getDay() + 6) % 7;
-  const daysInMonth = new Date(year, monthNumber, 0).getDate();
-  const available = new Map(availableDates.map(item => [item.date, item.available_count]));
-  const previousMonth = toDateInputValue(new Date(year, monthNumber - 2, 1)).slice(0, 7);
-  const nextMonth = toDateInputValue(new Date(year, monthNumber, 1)).slice(0, 7);
-  const canGoPrevious = `${previousMonth}-01` >= minDate.slice(0, 7) + "-01";
-  const canGoNext = `${nextMonth}-01` <= maxDate.slice(0, 7) + "-01";
-
-  return (
-    <div className="public-calendar" aria-label="Fechas disponibles">
-      <div className="public-calendar-head">
-        <button type="button" aria-label="Mes anterior" disabled={!canGoPrevious} onClick={() => onMonthChange(previousMonth)}>&lt;</button>
-        <strong>{monthDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</strong>
-        <button type="button" aria-label="Mes siguiente" disabled={!canGoNext} onClick={() => onMonthChange(nextMonth)}>&gt;</button>
-      </div>
-      <div className="public-calendar-grid public-calendar-weekdays">
-        {['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'].map(day => <span key={day}>{day}</span>)}
-      </div>
-      <div className="public-calendar-grid">
-        {Array.from({ length: firstWeekday }, (_, index) => <span className="calendar-empty" key={`empty-${index}`} />)}
-        {Array.from({ length: daysInMonth }, (_, index) => {
-          const day = index + 1;
-          const key = toDateInputValue(new Date(year, monthNumber - 1, day));
-          const count = available.get(key) || 0;
-          const enabled = key >= minDate && key <= maxDate && count > 0;
-          return (
-            <button type="button" key={key} disabled={!enabled} className={selectedDate === key ? "available selected" : enabled ? "available" : ""} onClick={() => onSelect(key)}>
-              <strong>{day}</strong>
-              {count > 0 && <small>{count} libres</small>}
-            </button>
-          );
-        })}
-      </div>
-      <p><span /> Días con turnos disponibles</p>
-    </div>
-  );
-}
-
-function calendarMonthBounds(month: string, minDate: string, maxDate: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const firstOfMonth = toDateInputValue(new Date(year, monthNumber - 1, 1));
-  const lastOfMonth = toDateInputValue(new Date(year, monthNumber, 0));
-  const first = firstOfMonth < minDate ? minDate : firstOfMonth;
-  const last = lastOfMonth > maxDate ? maxDate : lastOfMonth;
-  return first <= last ? { first, last } : { first: "", last: "" };
-}
-
-function publicBookingDuration(types: AppointmentTypeCode[]) {
-  return types.reduce((total, type) => total + (type === "CONSULTA" || type === "ELECTROCARDIOGRAMA" ? 15 : 30), 0);
-}
-
-function useBuenosAiresClock() {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer = 0;
-    getBuenosAiresClock()
-      .then(clock => {
-        if (cancelled) return;
-        const offset = new Date(clock.now).getTime() - Date.now();
-        const update = () => setNow(new Date(Date.now() + offset));
-        update();
-        timer = window.setInterval(update, 60_000);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-      if (timer) window.clearInterval(timer);
-    };
-  }, []);
-
-  return { now, today: buenosAiresDateInput(now) };
-}
-
-function buenosAiresDateInput(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value || "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function Login({ initialError = "", onLogin }: { initialError?: string; onLogin: (profile: Profile) => void }) {
-  const [mode, setMode] = useState<"login" | "request" | "reset">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [error, setError] = useState(initialError);
-  const [message, setMessage] = useState("");
-  const [resending, setResending] = useState(false);
-  const [remember, setRemember] = useState(getRememberSessionPreference());
-  const needsEmailConfirmation = error.includes("confirma tu email");
-
-  async function resendConfirmation() {
-    if (!email.trim()) return setError("Escribi tu email para reenviar la activacion.");
-    setResending(true);
-    setMessage("");
-    try {
-      await resendConfirmationEmail(email);
-      setError("");
-      setMessage("Listo. Te reenviamos el correo de activacion.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo reenviar el correo.");
-    } finally {
-      setResending(false);
-    }
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    try {
-      if (mode === "request") {
-        if (!fullName.trim() || !email.trim() || !password.trim()) throw new Error("Nombre, email y contrasena son obligatorios.");
-        await requestUserAccess({ full_name: fullName, email, password });
-        setMessage("Solicitud enviada. La medica/admin debe habilitar el usuario desde Usuarios.");
-        return;
-      }
-      if (mode === "reset") {
-        if (!email.trim()) throw new Error("Escribi tu email.");
-        await requestPasswordReset(email);
-        setMessage("Te enviamos un email para recuperar la contrasena.");
-        return;
-      }
-      const profile = await signIn(email, password, remember);
-      if (!profile) throw new Error("El usuario no tiene perfil configurado.");
-      onLogin(profile);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error de login");
-    }
-  }
-
-  return (
-    <div className="login">
-      <form onSubmit={submit} className="panel login-panel">
-        <div className="login-brand">
-          <span>SP</span>
-          <div>
-            <h1>Acceso al consultorio</h1>
-            <p>Pacientes y agenda</p>
-          </div>
-        </div>
-        {mode !== "login" && <button type="button" className="link login-back" onClick={() => setMode("login")}>Volver al ingreso</button>}
-        {mode === "request" && <label>Nombre completo<input value={fullName} onChange={e => setFullName(e.target.value)} onBlur={() => setFullName(formatProperName(fullName))} /></label>}
-        <label>Email<input value={email} onChange={e => setEmail(e.target.value)} /></label>
-        {mode !== "reset" && <label>Contrasena<input type="password" value={password} onChange={e => setPassword(e.target.value)} /></label>}
-        {needsEmailConfirmation ? (
-          <div className="auth-alert" role="status">
-            <span className="auth-alert-mark" aria-hidden="true">!</span>
-            <div>
-              <strong>Activa tu cuenta</strong>
-              <p>Revisa tu correo y abri el enlace que te enviamos para poder ingresar.</p>
-              <button type="button" className="link" disabled={resending} onClick={() => void resendConfirmation()}>
-                {resending ? "Reenviando..." : "Reenviar correo"}
-              </button>
-            </div>
-          </div>
-        ) : error ? <p className="error login-error">{error}</p> : null}
-        {message && <p className="notice ok-notice">{message}</p>}
-        {mode === "login" && <label className="remember-session"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Recordarme en este dispositivo</label>}
-        <button className="primary">{mode === "login" ? "Ingresar" : mode === "request" ? "Solicitar acceso" : "Enviar recuperacion"}</button>
-        {mode === "login" && <a className="public-booking-login-link" href="/turnos">Solicitar un turno online</a>}
-        {mode === "login" && (
-          <div className="login-secondary-actions">
-            <button type="button" className="link" onClick={() => setMode("reset")}>Olvide mi contrasena</button>
-            <button type="button" className="link" onClick={() => setMode("request")}>Solicitar nuevo usuario</button>
-          </div>
-        )}
-      </form>
-    </div>
-  );
-}
-
-function PasswordRecovery({ forced = false, onDone }: { forced?: boolean; onDone: (profile: Profile) => void }) {
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (password.length < 8) return setError("La nueva contrasena debe tener al menos 8 caracteres.");
-    if (password !== confirmation) return setError("Las contrasenas no coinciden.");
-    setSaving(true);
-    setError("");
-    try {
-      await updateCurrentPassword(password);
-      const profile = await getCurrentProfile();
-      if (!profile) throw new Error("No se pudo recuperar el perfil del usuario.");
-      onDone(profile);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar la contrasena.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="login">
-      <form onSubmit={submit} className="panel login-panel">
-        <div className="login-brand">
-          <span>SP</span>
-          <div><h1>{forced ? "Cambia tu clave provisoria" : "Nueva contrasena"}</h1><p>Elegi una clave personal para tu cuenta</p></div>
-        </div>
-        <label>Nueva contrasena<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" /></label>
-        <label>Repetir contrasena<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" /></label>
-        <small className="password-hint">Usa al menos 8 caracteres. Evita nombres, DNI o claves compartidas.</small>
-        {error && <p className="error login-error">{error}</p>}
-        <button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar nueva contrasena"}</button>
-      </form>
     </div>
   );
 }
@@ -1199,130 +750,6 @@ function appointmentStatusClass(status: AppointmentStatus) {
   return `status-${status.toLowerCase().replace(/_/g, "-")}`;
 }
 
-type AppointmentTypeCode = "CONSULTA" | "ELECTROCARDIOGRAMA" | "ERGOMETRIA" | "MAPA" | "HOLTER";
-
-function appointmentTypeOptions() {
-  return [
-    { value: "CONSULTA" as AppointmentTypeCode, label: "Consulta" },
-    { value: "ELECTROCARDIOGRAMA" as AppointmentTypeCode, label: "Electrocardiograma" },
-    { value: "ERGOMETRIA" as AppointmentTypeCode, label: "Ergometria" },
-    { value: "MAPA" as AppointmentTypeCode, label: "MAPA" },
-    { value: "HOLTER" as AppointmentTypeCode, label: "Holter" }
-  ];
-}
-
-function appointmentTypeLabel(value: string) {
-  return decodeAppointmentTypes(value).map(type => appointmentTypeOptions().find(option => option.value === type)?.label || type).join(" + ");
-}
-
-function appointmentTypeClass(value: string) {
-  return `type-${value.toLowerCase().replace(/_/g, "-")}`;
-}
-
-function primaryAppointmentTypeClass(value: string) {
-  return appointmentTypeClass(decodeAppointmentTypes(value)[0] || "CONSULTA");
-}
-
-function decodeAppointmentTypes(value: string): AppointmentTypeCode[] {
-  const valid = appointmentTypeOptions().map(option => option.value);
-  const values = (value || "").split("+").filter((item): item is AppointmentTypeCode => valid.includes(item as AppointmentTypeCode));
-  return values.length ? values : ["CONSULTA"];
-}
-
-function encodeAppointmentTypes(values: AppointmentTypeCode[]) {
-  const unique = appointmentTypeOptions().map(option => option.value).filter(value => values.includes(value));
-  return (unique.length ? unique : ["CONSULTA"]).join("+");
-}
-
-const appointmentTypesPrefix = "[[MOTIVOS_TURNO:";
-const appointmentTypesSuffix = "]]";
-
-function buildAppointmentTypePayload(types: AppointmentTypeCode[], reason: string) {
-  const cleanTypes = decodeAppointmentTypes(encodeAppointmentTypes(types));
-  const cleanReason = reason.trim();
-  const encodedTypes = encodeAppointmentTypes(cleanTypes);
-  return {
-    type: cleanTypes[0],
-    reason: cleanTypes.length > 1
-      ? `${appointmentTypesPrefix}${encodedTypes}${appointmentTypesSuffix}${cleanReason ? `\n${cleanReason}` : ""}`
-      : cleanReason
-  };
-}
-
-function appointmentTypeValue(appointment: Appointment) {
-  return extractAppointmentTypes(appointment.reason) || appointment.type;
-}
-
-function extractAppointmentTypes(reason?: string | null) {
-  const match = (reason || "").match(/^\[\[MOTIVOS_TURNO:([A-Z_+]+)\]\]/);
-  return match?.[1] || "";
-}
-
-function visibleAppointmentReason(reason?: string | null) {
-  return (reason || "").replace(/^\[\[MOTIVOS_TURNO:[A-Z_+]+\]\]\s*/, "").trim();
-}
-
-function AppointmentTypeLabels({ value }: { value: string }) {
-  return (
-    <span className="type-labels">
-      {decodeAppointmentTypes(value).map(type => (
-        <span className={`type-label ${appointmentTypeClass(type)}`} key={type}>{appointmentTypeLabel(type)}</span>
-      ))}
-    </span>
-  );
-}
-
-function AppointmentTypePicker({ value, onChange }: { value: AppointmentTypeCode[]; onChange: (value: AppointmentTypeCode[]) => void }) {
-  function toggle(type: AppointmentTypeCode) {
-    const next = value.includes(type) ? value.filter(item => item !== type) : [...value, type];
-    onChange(next.length ? next : ["CONSULTA"]);
-  }
-
-  return (
-    <fieldset className="appointment-type-picker">
-      <legend>Motivo del turno</legend>
-      <div>
-        {appointmentTypeOptions().map(option => (
-          <label className={`type-choice ${appointmentTypeClass(option.value)}`} key={option.value}>
-            <input type="checkbox" checked={value.includes(option.value)} onChange={() => toggle(option.value)} />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-function NavButton({ active, icon, label, hint, onClick }: { active: boolean; icon: string; label: string; hint: string; onClick: () => void }) {
-  return (
-    <button className={active ? "nav-item active" : "nav-item"} onClick={onClick} aria-label={label} title={label}>
-      <span className="nav-icon">{icon}</span>
-      <span className="nav-copy">
-        <strong>{label}</strong>
-        <small>{hint}</small>
-      </span>
-    </button>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  useEffect(() => {
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="modal-panel" role="dialog" aria-modal="true" onMouseDown={event => event.stopPropagation()}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { profile: Profile; selectedId: string | null; openNewKey?: number; onSelect: (id: string) => void; onClose: () => void }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [detail, setDetail] = useState<Patient | null>(null);
@@ -1488,15 +915,6 @@ function InsurancePlanPicker({
     </div>
   );
 }
-
-const documentTypeOptions: Array<{ value: IdentityDocumentType; label: string }> = [
-  { value: "DNI", label: "DNI" },
-  { value: "LC", label: "Libreta Civica (LC)" },
-  { value: "LE", label: "Libreta de Enrolamiento (LE)" },
-  { value: "PASAPORTE", label: "Pasaporte" },
-  { value: "CEDULA_IDENTIDAD", label: "Cedula de identidad" },
-  { value: "DOCUMENTO_EXTRANJERO", label: "Documento extranjero" }
-];
 
 function IdentityDocumentFields({ value, onChange }: { value: PatientInput; onChange: (next: PatientInput) => void }) {
   const documentType = value.document_type || "DNI";
@@ -1944,10 +1362,6 @@ function formatBirthDate(value?: string | null) {
   return `${match[3]}/${match[2]}/${year}`;
 }
 
-function documentTypeLabel(type?: IdentityDocumentType) {
-  return documentTypeOptions.find(option => option.value === (type || "DNI"))?.label || "Documento";
-}
-
 function formatPatientDocument(patient: Pick<Patient, "document_type" | "document">, emptyValue = "-") {
   const type = patient.document_type || "DNI";
   const number = formatDocumentNumber(type, patient.document, emptyValue);
@@ -1965,10 +1379,6 @@ function buildWhatsappUrl(phone?: string | null, text = "") {
   const digits = (phone || "").replace(/\D/g, "");
   if (!digits) return "";
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-}
-
-function toDateInputValue(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function toDatetimeLocal(date: Date) {
@@ -3176,203 +2586,6 @@ function HolidayRow({ holiday, canEdit, onSaved }: { holiday: Holiday; canEdit: 
       )}
     </div>
   );
-}
-
-function UserManager({ users, locations, onSaved }: { users: Profile[]; locations: Location[]; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "" });
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("activos");
-  const visibleUsers = users.filter(user => statusFilter === "todos" || (statusFilter === "activos" ? user.active : !user.active));
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!form.email.trim() || !form.password.trim() || !form.full_name.trim()) return setError("Email, contrasena y nombre son obligatorios.");
-    if (form.document_number.replace(/\D/g, "").length < 6) return setError("Carga el DNI del usuario para poder blanquear su acceso.");
-    if (form.password.length < 8) return setError("La contrasena debe tener al menos 8 caracteres.");
-    if (form.role === "SECRETARIA" && !form.location_id) return setError("La secretaria debe tener un consultorio.");
-    setError("");
-    setMessage("");
-    setSaving(true);
-    try {
-      const created = await createUserWithLogin(form);
-      setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "" });
-      await onSaved();
-      setMessage(`${created.full_name} fue dada de alta. Ya puede ingresar; si recibe un email de confirmacion, debe abrirlo primero.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el usuario.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="panel admin-section wide user-manager">
-      <div className="section-title"><div><h2>Usuarios</h2><p>{users.filter(user => user.active).length} activos · {users.length} totales</p></div></div>
-      <details className="user-create-panel">
-        <summary>+ Nuevo usuario</summary>
-        <div className="user-create-content">
-        <p className="notice">El DNI se usa como clave provisoria al blanquear el acceso. En el siguiente ingreso debe elegir una contrasena personal.</p>
-        <form className="form-grid" onSubmit={submit}>
-        <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
-        <label>Contrasena inicial<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label>
-        <label>Nombre<input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, full_name: formatProperName(current.full_name) }))} /></label>
-        <label>DNI del usuario<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={e => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", e.target.value) })} inputMode="numeric" /></label>
-        <label>Rol
-          <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as ProfileInput["role"], location_id: e.target.value === "SECRETARIA" ? form.location_id : "" })}>
-            <option value="SECRETARIA">Secretaria</option>
-            <option value="MEDICA_ADMIN">Medica/Admin</option>
-          </select>
-        </label>
-        <label>Consultorio
-          <select value={form.location_id || ""} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
-            <option value="">Elegir consultorio</option>
-            {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-          </select>
-        </label>
-        {error && <p className="error">{error}</p>}
-        {message && <p className="notice ok-notice">{message}</p>}
-        <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Creando..." : "Crear usuario"}</button></div>
-        </form>
-        </div>
-      </details>
-      <div className="user-list-toolbar">
-        <strong>Accesos</strong>
-        <div className="segmented status-filter" aria-label="Filtrar usuarios">
-          <button className={statusFilter === "activos" ? "active" : ""} onClick={() => setStatusFilter("activos")}>Activos</button>
-          <button className={statusFilter === "inactivos" ? "active" : ""} onClick={() => setStatusFilter("inactivos")}>Inactivos</button>
-          <button className={statusFilter === "todos" ? "active" : ""} onClick={() => setStatusFilter("todos")}>Todos</button>
-        </div>
-      </div>
-      <div className="list user-list">
-        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} onSaved={onSaved} />)}
-        {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
-      </div>
-    </section>
-  );
-}
-
-function UserRow({ user, locations, onSaved }: { user: Profile; locations: Location[]; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState<Omit<ProfileInput, "id">>({
-    email: user.email,
-    full_name: user.full_name,
-    role: user.role,
-    location_id: user.location_id || "",
-    active: user.active,
-    document_number: user.document_number || ""
-  });
-  const [resetStatus, setResetStatus] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [changingStatus, setChangingStatus] = useState(false);
-
-  useEffect(() => {
-    setForm({
-      email: user.email,
-      full_name: user.full_name,
-      role: user.role,
-      location_id: user.location_id || "",
-      active: user.active,
-      document_number: user.document_number || ""
-    });
-  }, [user]);
-
-  async function resetPassword() {
-    if (!window.confirm(`Blanquear la clave de ${user.full_name} usando su DNI como clave provisoria?`)) return;
-    setResetStatus("Blanqueando...");
-    try {
-      const result = await resetUserPasswordToDocument(user.id);
-      setResetStatus(`Clave provisoria: ${result.temporary_password}. Debe cambiarla al ingresar.`);
-    } catch (err) {
-      setResetStatus(err instanceof Error ? err.message : "No se pudo blanquear");
-    }
-  }
-
-  async function saveUser(next = form) {
-    setResetStatus("");
-    try {
-      await updateProfile(user.id, next);
-      await onSaved();
-      setEditing(false);
-    } catch (err) {
-      setResetStatus(err instanceof Error ? err.message : "No se pudo actualizar el usuario.");
-    }
-  }
-
-  async function toggleActive() {
-    if (user.is_master) return;
-    const action = user.active ? "bloquear" : "reactivar";
-    if (!window.confirm(`${action === "bloquear" ? "Bloquear" : "Reactivar"} el acceso de ${user.full_name}?`)) return;
-    setChangingStatus(true);
-    setResetStatus("");
-    try {
-      await setProfileActive(user.id, !user.active);
-      await onSaved();
-    } catch (err) {
-      setResetStatus(err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario.");
-    } finally {
-      setChangingStatus(false);
-    }
-  }
-
-  if (!editing) {
-    return (
-      <article className={`user-card ${user.active ? "" : "is-inactive"}`}>
-        <div className="user-card-identity">
-          <span className="avatar">{user.full_name?.slice(0, 2).toUpperCase() || "US"}</span>
-          <div><strong>{user.full_name}</strong><small>{user.email}</small></div>
-        </div>
-        <div className="user-card-meta">
-          <span>{user.role === "MEDICA_ADMIN" ? "Medica/Admin" : "Secretaria"}</span>
-          <span>{user.location?.name || "Todos los consultorios"}</span>
-          {user.document_number && <span>DNI {formatDocumentNumber("DNI", user.document_number, "")}</span>}
-        </div>
-        <div className="user-card-actions">
-          {user.is_master ? <span className="badge master">Maestro</span> : (
-            <label className="status-switch">
-              <input type="checkbox" checked={user.active} disabled={changingStatus} onChange={() => void toggleActive()} />
-              <span>{changingStatus ? "Guardando..." : user.active ? "Activo" : "Bloqueado"}</span>
-            </label>
-          )}
-          {!user.is_master && <button type="button" className="secondary-action" onClick={() => setEditing(true)}>Editar</button>}
-        </div>
-        {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
-      </article>
-    );
-  }
-
-  return (
-    <article className="user-card user-card-editing">
-      <div className="user-edit-grid">
-        <label>Nombre<input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, full_name: formatProperName(current.full_name) }))} /></label>
-        <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
-        <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={e => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", e.target.value) })} inputMode="numeric" /></label>
-        <label>Rol<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as ProfileInput["role"], location_id: e.target.value === "SECRETARIA" ? form.location_id : "" })}>
-          <option value="SECRETARIA">Secretaria</option><option value="MEDICA_ADMIN">Medica/Admin</option>
-        </select></label>
-        <label>Consultorio<select value={form.location_id || ""} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
-          <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-        </select></label>
-      </div>
-      <div className="row-actions user-edit-actions">
-        <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
-        <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
-        <button type="button" onClick={() => void resetPassword()}>Blanquear clave</button>
-      </div>
-      {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
-    </article>
-  );
-}
-function Page({ title, subtitle, actions, children }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode }) {
-  return <><header className="page-head"><div><h1>{title}</h1><p>{subtitle}</p></div><div>{actions}</div></header>{children}</>;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="stat"><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
-  return <div className="table-wrap"><table><thead><tr>{headers.map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
 }
 
 const rootElement = document.getElementById("root")!;
