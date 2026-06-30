@@ -697,7 +697,7 @@ export async function createClinicalEvolution(input: ClinicalEvolutionInput) {
     .insert({
       patient_id: input.patient_id,
       occurred_at: toIsoDateTime(input.occurred_at),
-      reason: input.reason.trim(),
+      reason: input.reason.trim() || "Evolucion clinica",
       diagnosis: input.diagnosis?.trim() || null,
       notes: input.notes?.trim() || null,
       indications: input.indications?.trim() || null,

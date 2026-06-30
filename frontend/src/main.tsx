@@ -1933,7 +1933,6 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.reason.trim()) return setError("El motivo de la visita es obligatorio.");
     setError("");
     try {
       await createClinicalEvolution({ ...form, patient_id: patient.id });
@@ -1949,7 +1948,7 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
       <h2>Nueva historia clinica / evolucion</h2>
       <div className="form-grid">
         <label>Fecha y hora<input type="datetime-local" value={form.occurred_at} onChange={e => setForm({ ...form, occurred_at: e.target.value })} /></label>
-        <label>Motivo de visita<input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} /></label>
+        <label>Motivo de visita <small>(opcional)</small><input value={form.reason} placeholder="Ej.: Control, consulta, seguimiento" onChange={e => setForm({ ...form, reason: e.target.value })} /></label>
         <label>Diagnostico<textarea value={form.diagnosis} onChange={e => setForm({ ...form, diagnosis: e.target.value })} /></label>
         <label>Indicaciones<textarea value={form.indications} onChange={e => setForm({ ...form, indications: e.target.value })} /></label>
         <label className="full-field">Evolucion / nota medica<textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
