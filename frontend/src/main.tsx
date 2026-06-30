@@ -49,6 +49,7 @@ import {
   updateHoliday,
   updateLocation,
   updatePatientContact,
+  updateMyDocumentProfile,
   validateWebPatient,
   uploadPatientAttachment,
   createSignedAttachmentUrl,
@@ -70,6 +71,8 @@ import {
 } from "./features/appointments/appointmentTypes";
 import { Login, PasswordRecovery } from "./features/auth/AuthScreens";
 import { UserManager } from "./features/users/UserManager";
+import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalDocumentDialog";
+import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
 import { PublicBookingPage } from "./pages/PublicBookingPage";
 import { toDateInputValue } from "./utils/dates";
@@ -1506,6 +1509,7 @@ function getLastPatientVisit(patient: Patient) {
 function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; profile: Profile; notice?: string; onBack: () => void }) {
   const [currentPatient, setCurrentPatient] = useState(patient);
   const [panel, setPanel] = useState<"historia" | "datos" | "adjuntos" | "nota" | "enviar">("historia");
+  const [showDocumentGenerator, setShowDocumentGenerator] = useState(false);
 
   async function refresh() {
     setCurrentPatient(await getPatient(patient.id));
@@ -1527,11 +1531,12 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       subtitle="Ficha clinica del paciente"
       actions={
         <>
-          {canAccessClinical(profile) && <button className="secondary-action" onClick={() => printClinicalHistory(currentPatient, profile)}>Imprimir historia / PDF</button>}
+          {canAccessClinical(profile) && <button className="secondary-action" onClick={() => setShowDocumentGenerator(true)}>Generar documento PDF</button>}
           <button onClick={onBack}>Volver a pacientes</button>
         </>
       }
     >
+      {showDocumentGenerator && <InstitutionalDocumentDialog patient={currentPatient} profile={profile} onClose={() => setShowDocumentGenerator(false)} />}
       {notice && <p className="notice ok-notice">{notice}</p>}
       {currentPatient.status === "baja" && <p className="notice">Paciente dado de baja. La historia queda conservada.</p>}
       <div className="clinical-actions">
@@ -1581,16 +1586,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
 }
 
 function printClinicalHistory(patient: Patient, profile: Profile) {
-  const printWindow = window.open("", "_blank", "width=900,height=1100");
-  if (!printWindow) {
-    window.alert("El navegador bloqueo la ventana de impresion. Habilita pop-ups para esta app.");
-    return;
-  }
-
-  printWindow.document.write(buildClinicalHistoryHtml(patient, profile));
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => printWindow.print(), 250);
+  void downloadInstitutionalPdf({ patient, profile, kind: "HISTORY" });
 }
 
 function buildClinicalHistoryHtml(patient: Patient, profile: Profile) {
@@ -1885,7 +1881,7 @@ function DocumentShareForm({ patient, profile }: { patient: Patient; profile: Pr
       {error && <p className="error">{error}</p>}
       {prepared && <p className="notice ok-notice">Correo preparado. Revisa el destinatario y adjunta el PDF de historia si corresponde.</p>}
       <div className="form-actions">
-        {includeHistory && <button type="button" className="secondary-action" onClick={() => printClinicalHistory(patient, profile)}>Ver / guardar historia PDF</button>}
+        {includeHistory && <button type="button" className="secondary-action" onClick={() => printClinicalHistory(patient, profile)}>Descargar historia PDF</button>}
         <button type="button" className="primary" disabled={loading} onClick={openEmail}>{loading ? "Preparando..." : "Abrir email"}</button>
       </div>
     </section>
@@ -2204,12 +2200,10 @@ function Tasks() {
 
 function Settings({ profile }: { profile: Profile }) {
   const [data, setData] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[]; availability: MedicalAvailability[]; holidays: Holiday[] } | null>(null);
-  const [users, setUsers] = useState<Profile[]>([]);
 
   async function refresh() {
     const config = await getConfiguration();
     setData({ insurancePlans: config.insurancePlans, locations: config.locations, availability: config.availability, holidays: config.holidays });
-    if (canManageUsers(profile)) setUsers(await listProfiles());
   }
 
   useEffect(() => { refresh(); }, []);
@@ -2218,6 +2212,7 @@ function Settings({ profile }: { profile: Profile }) {
       {!canManageConfiguration(profile) && <p className="notice">Tu acceso permite consultar la configuracion, pero no modificarla.</p>}
       {data && (
         <div className="admin-grid">
+          {canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
           <LocationManager locations={data.locations} canEdit={profile.is_master} onSaved={refresh} />
           <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
           <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
@@ -2245,6 +2240,36 @@ function Users() {
       {config && <UserManager users={users} locations={config.locations} onSaved={refresh} />}
     </Page>
   );
+}
+
+function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
+  const [form, setForm] = useState({
+    specialty: profile.specialty || profile.public_booking_specialty || "",
+    professional_license: profile.professional_license || "",
+    signature_name: profile.signature_name || profile.full_name,
+    institution_name: profile.institution_name || "",
+    institutional_footer: profile.institutional_footer || ""
+  });
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setSaving(true); setStatus("");
+    try { const updated = await updateMyDocumentProfile(form); Object.assign(profile, updated); setStatus("Datos guardados para los proximos documentos."); }
+    catch (error) { setStatus(error instanceof Error ? error.message : "No se pudieron guardar los datos."); }
+    finally { setSaving(false); }
+  }
+  return <section className="panel admin-section professional-document-settings">
+    <h2>Datos para documentos PDF</h2>
+    <form className="form-grid" onSubmit={submit}>
+      <label>Institucion<input value={form.institution_name} onChange={event => setForm({ ...form, institution_name: event.target.value })} placeholder="Nombre del centro o consultorio" /></label>
+      <label>Especialidad<input value={form.specialty} onChange={event => setForm({ ...form, specialty: event.target.value })} placeholder="Especialidad profesional" /></label>
+      <label>Matricula<input value={form.professional_license} onChange={event => setForm({ ...form, professional_license: event.target.value })} placeholder="MP / MN" /></label>
+      <label>Nombre de firma<input value={form.signature_name} onChange={event => setForm({ ...form, signature_name: event.target.value })} /></label>
+      <label className="full-field">Pie institucional<input value={form.institutional_footer} onChange={event => setForm({ ...form, institutional_footer: event.target.value })} placeholder="Direccion, telefono o texto institucional" /></label>
+      {status && <p className={status.startsWith("Datos") ? "notice ok-notice" : "error"}>{status}</p>}
+      <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar datos PDF"}</button></div>
+    </form>
+  </section>;
 }
 
 function LocationManager({ locations, canEdit, onSaved }: { locations: Location[]; canEdit: boolean; onSaved: () => Promise<void> }) {

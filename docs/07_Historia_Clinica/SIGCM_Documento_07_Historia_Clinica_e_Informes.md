@@ -37,5 +37,10 @@ Permitir correo, WhatsApp o ambos con plantillas editables. Registrar auditoría
 ## Exportación
 La historia clínica debe exportarse en PDF institucional con logo configurable, datos del profesional y anexos seleccionados.
 
+Implementación vigente: los PDFs institucionales se generan bajo demanda en
+la sesión interna y no se almacenan automáticamente. La plantilla A4 soporta
+historia clínica, informe médico, constancia de atención, resumen e
+indicaciones. El nombre del archivo incluye paciente, tipo y fecha de emisión.
+
 ## Seguridad
 Los documentos no serán públicos. Los accesos y descargas deberán quedar auditados cuando sea posible.

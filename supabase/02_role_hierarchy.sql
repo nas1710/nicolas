@@ -20,7 +20,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select public.current_role() in ('MEDICA_ADMIN', 'ADMINISTRADOR');
+  select public.current_role()::text in ('MEDICA_ADMIN', 'ADMINISTRADOR');
 $$;
 
 drop policy if exists "profiles read own or admin" on public.profiles;

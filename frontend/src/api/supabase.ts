@@ -65,6 +65,12 @@ export type Profile = {
   is_master: boolean;
   must_change_password: boolean;
   document_number: string | null;
+  specialty?: string | null;
+  public_booking_specialty?: string | null;
+  professional_license?: string | null;
+  signature_name?: string | null;
+  institution_name?: string | null;
+  institutional_footer?: string | null;
   location?: Location | null;
 };
 
@@ -517,6 +523,18 @@ export async function getCurrentProfile() {
   if (data.role === "SECRETARIA" && !data.location_id) {
     throw new Error("La secretaria todavia no tiene un consultorio asignado.");
   }
+  return data as Profile;
+}
+
+export async function updateMyDocumentProfile(input: Pick<Profile, "specialty" | "professional_license" | "signature_name" | "institution_name" | "institutional_footer">) {
+  const { data, error } = await supabase.rpc("update_my_document_profile", {
+    p_specialty: input.specialty || "",
+    p_professional_license: input.professional_license || "",
+    p_signature_name: input.signature_name || "",
+    p_institution_name: input.institution_name || "",
+    p_institutional_footer: input.institutional_footer || ""
+  });
+  throwIfError(error);
   return data as Profile;
 }
 

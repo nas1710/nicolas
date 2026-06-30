@@ -150,6 +150,18 @@ Importante:
 - Si se usa Google Drive, el acceso al archivo lo siguen controlando los permisos de Drive. Revisar que la medica/secretaria autorizada pueda abrir el enlace.
 - En una app de escritorio futura se puede sumar carpeta vigilada para Cardiovex/Eccosur y seleccion de rutas locales mas comoda.
 
+## PDF institucional
+
+Desde la ficha clinica, los usuarios internos con acceso clinico pueden usar
+**Generar documento PDF** para descargar bajo demanda historia clinica,
+informe medico, constancia de atencion, resumen o indicaciones.
+
+El archivo A4 se genera localmente en el navegador y no se guarda
+automaticamente en Supabase. Toma los datos disponibles del paciente,
+profesional, especialidad, matricula, practica y consultorio. Los campos
+profesionales opcionales se agregan con
+`supabase/04_institutional_pdf_profiles.sql`.
+
 ## Pacientes y turnos
 
 Desde **Pacientes**:

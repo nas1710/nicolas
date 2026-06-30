@@ -17,7 +17,10 @@ Ejecutar en SQL Editor con rol `postgres`:
 
 1. `supabase/schema.sql`
 2. `supabase/public_booking.sql`
-3. Desplegar `supabase/functions/admin-manage-user`
+3. `supabase/02_role_hierarchy.sql`
+4. `supabase/03_web_patient_validation.sql`
+5. `supabase/04_institutional_pdf_profiles.sql`
+6. Desplegar `supabase/functions/admin-manage-user`
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -27,7 +30,10 @@ Para la base publicada de Cardio Ayala:
 
 1. `supabase/01_consolidar_base_actual.sql`
 2. `supabase/public_booking.sql`
-3. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
+3. `supabase/02_role_hierarchy.sql`
+4. `supabase/03_web_patient_validation.sql`
+5. `supabase/04_institutional_pdf_profiles.sql`
+6. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
