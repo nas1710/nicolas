@@ -82,6 +82,7 @@ Para la base que ya esta publicada, ejecutar despues y en este orden:
 ```text
 supabase/fix_authentication.sql
 supabase/patient_uniqueness.sql
+supabase/01_fix_patient_location_model.sql
 supabase/master_and_passwords.sql
 supabase/master_consultorios_holidays.sql
 ```
@@ -113,6 +114,10 @@ Para habilitar pacientes unicos por tipo y numero de documento vinculados a vari
 una vez `supabase/patient_uniqueness.sql`. La migracion conserva los pacientes y
 vincula automaticamente cada registro actual con su consultorio original. Admite
 DNI, LC, LE, pasaporte, cedula de identidad y documento extranjero.
+
+Ejecutar despues `supabase/01_fix_patient_location_model.sql`: conserva la columna
+heredada `patients.location_id`, migra sus vinculos y deja `patient_locations`
+como unica relacion vigente entre pacientes y consultorios.
 
 En Supabase:
 
@@ -291,6 +296,7 @@ Antes de publicar el frontend, ejecutar en Supabase SQL Editor y en este orden:
 
 ```text
 supabase/patient_uniqueness.sql
+supabase/01_fix_patient_location_model.sql
 supabase/public_booking.sql
 ```
 

@@ -98,6 +98,36 @@ from public.patients
 where location_id is not null
 on conflict do nothing;
 
+-- patient_locations es la unica relacion vigente entre pacientes y consultorios.
+-- La columna patients.location_id queda solo como dato legado, sin FK para evitar
+-- que PostgREST encuentre dos caminos hacia locations.
+do $$
+declare
+  constraint_name text;
+begin
+  for constraint_name in
+    select constraint_row.conname
+    from pg_constraint constraint_row
+    where constraint_row.contype = 'f'
+      and constraint_row.conrelid = 'public.patients'::regclass
+      and constraint_row.confrelid = 'public.locations'::regclass
+      and exists (
+        select 1
+        from unnest(constraint_row.conkey) column_number
+        join pg_attribute attribute
+          on attribute.attrelid = constraint_row.conrelid
+         and attribute.attnum = column_number
+        where attribute.attname = 'location_id'
+      )
+  loop
+    execute format('alter table public.patients drop constraint %I', constraint_name);
+  end loop;
+end;
+$$;
+
+comment on column public.patients.location_id is
+  'LEGACY: no usar para relaciones nuevas. La relacion canonica es public.patient_locations.';
+
 alter table public.patient_locations enable row level security;
 
 create or replace function public.patient_accessible(target_patient_id uuid)
@@ -166,9 +196,18 @@ begin
     end if;
   end if;
 
+  if target_location is not null and not exists (
+    select 1 from public.locations location where location.id = target_location and location.active
+  ) then
+    raise exception 'El consultorio seleccionado no existe o esta inactivo.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(clean_type || ':' || clean_document));
+
   select * into existing_patient
   from public.patients
-  where document_type = clean_type and document = clean_document;
+  where document_type = clean_type and document = clean_document
+  for update;
 
   if found then
     if existing_patient.birth_date is not null
@@ -188,10 +227,10 @@ begin
 
   insert into public.patients (
     first_name, last_name, document_type, document, birth_date, phone, email,
-    affiliate_number, insurance_plan_id, location_id
+    affiliate_number, insurance_plan_id
   ) values (
     p_first_name, p_last_name, clean_type, clean_document, p_birth_date, p_phone, p_email,
-    p_affiliate_number, p_insurance_plan_id, target_location
+    p_affiliate_number, p_insurance_plan_id
   ) returning id into patient_uuid;
 
   if target_location is not null then
@@ -225,7 +264,7 @@ for select using (public.patient_accessible(id));
 
 drop policy if exists "patients scoped insert" on public.patients;
 create policy "patients scoped insert" on public.patients
-for insert with check (public.is_admin() or location_id = public.current_location_id());
+for insert with check (public.is_admin());
 
 drop policy if exists "patients scoped update" on public.patients;
 create policy "patients scoped update" on public.patients

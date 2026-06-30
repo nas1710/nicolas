@@ -60,7 +60,7 @@ create table public.patients (
   status text not null default 'activo',
   affiliate_number text,
   insurance_plan_id uuid references public.insurance_plans(id) on delete set null,
-  location_id uuid references public.locations(id) on delete set null,
+  location_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint patients_document_type_number_unique unique (document_type, document),
@@ -78,6 +78,9 @@ create table public.patient_locations (
   linked_by uuid references public.profiles(id) on delete set null,
   primary key (patient_id, location_id)
 );
+
+comment on column public.patients.location_id is
+  'LEGACY: no usar para relaciones nuevas. La relacion canonica es public.patient_locations.';
 
 create table public.medical_availability (
   id uuid primary key default gen_random_uuid(),
@@ -215,7 +218,6 @@ create table public.audit_logs (
   created_at timestamptz not null default now()
 );
 
-create index on public.patients(location_id);
 create index on public.patient_locations(location_id, patient_id);
 create index on public.appointments(location_id, starts_at);
 create index on public.reports(location_id, status);
@@ -311,7 +313,6 @@ begin
   end if;
 
   if exists (select 1 from public.profiles where location_id = target_location_id)
-    or exists (select 1 from public.patients where location_id = target_location_id)
     or exists (select 1 from public.patient_locations where location_id = target_location_id)
     or exists (select 1 from public.medical_availability where location_id = target_location_id)
     or exists (select 1 from public.appointments where location_id = target_location_id)
@@ -443,9 +444,18 @@ begin
     end if;
   end if;
 
+  if target_location is not null and not exists (
+    select 1 from public.locations location where location.id = target_location and location.active
+  ) then
+    raise exception 'El consultorio seleccionado no existe o esta inactivo.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(clean_type || ':' || clean_document));
+
   select * into existing_patient
   from public.patients
-  where document_type = clean_type and document = clean_document;
+  where document_type = clean_type and document = clean_document
+  for update;
 
   if found then
     if existing_patient.birth_date is not null
@@ -465,10 +475,10 @@ begin
 
   insert into public.patients (
     first_name, last_name, document_type, document, birth_date, phone, email,
-    affiliate_number, insurance_plan_id, location_id
+    affiliate_number, insurance_plan_id
   ) values (
     p_first_name, p_last_name, clean_type, clean_document, p_birth_date, p_phone, p_email,
-    p_affiliate_number, p_insurance_plan_id, target_location
+    p_affiliate_number, p_insurance_plan_id
   ) returning id into patient_uuid;
 
   if target_location is not null then
@@ -611,7 +621,7 @@ create policy "patient locations scoped update" on public.patient_locations for 
 );
 
 create policy "patients scoped read" on public.patients for select using (public.patient_accessible(id));
-create policy "patients scoped insert" on public.patients for insert with check (public.is_admin() or location_id = public.current_location_id());
+create policy "patients scoped insert" on public.patients for insert with check (public.is_admin());
 create policy "patients scoped update" on public.patients for update using (public.patient_accessible(id)) with check (public.patient_accessible(id));
 
 create policy "availability scoped read" on public.medical_availability for select using (public.is_admin() or location_id = public.current_location_id());

@@ -44,7 +44,6 @@ begin
   end if;
 
   if exists (select 1 from public.profiles where location_id = target_location_id)
-    or exists (select 1 from public.patients where location_id = target_location_id)
     or exists (select 1 from public.patient_locations where location_id = target_location_id)
     or exists (select 1 from public.medical_availability where location_id = target_location_id)
     or exists (select 1 from public.appointments where location_id = target_location_id)

@@ -1891,8 +1891,7 @@ function patientConsultorios(patient: Patient) {
   const linked = (patient.patient_locations || [])
     .map(item => item.locations?.name)
     .filter((name): name is string => Boolean(name));
-  const names = linked.length ? linked : patient.locations?.name ? [patient.locations.name] : [];
-  return [...new Set(names)].join(", ") || "Sin consultorio";
+  return [...new Set(linked)].join(", ") || "Sin consultorio";
 }
 
 function buildWhatsappUrl(phone?: string | null, text = "") {
@@ -2122,7 +2121,7 @@ function buildClinicalHistoryHtml(patient: Patient, profile: Profile) {
   const attachments = patient.attachments || [];
   const fileName = buildClinicalHistoryFileName(patient);
   const generatedAt = new Date().toLocaleString();
-  const doctorLocation = profile.location?.name || patient.locations?.name || "Sin consultorio";
+  const doctorLocation = profile.location?.name || patientConsultorios(patient);
 
   return `<!doctype html>
 <html lang="es">

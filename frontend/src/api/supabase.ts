@@ -120,9 +120,7 @@ export type Patient = {
   status: string;
   affiliate_number: string | null;
   insurance_plan_id: string | null;
-  location_id: string | null;
   insurance_plans?: InsurancePlan | null;
-  locations?: Location | null;
   patient_locations?: Array<{ location_id: string; locations?: Location | null }>;
   linked_existing?: boolean;
   appointments?: Appointment[];
@@ -561,7 +559,7 @@ export async function updatePatientContact(id: string, input: PatientContactInpu
       insurance_plan_id: input.insurance_plan_id || null
     })
     .eq("id", id)
-    .select("*, insurance_plans(*)")
+    .select("*, insurance_plans(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*))")
     .single();
 
   throwIfError(error);
@@ -577,7 +575,7 @@ export async function setPatientActive(id: string, active: boolean) {
     .from("patients")
     .update({ status: active ? "activo" : "baja" })
     .eq("id", id)
-    .select("*, insurance_plans(*), locations(*)")
+    .select("*, insurance_plans(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*))")
     .single();
 
   throwIfError(error);
