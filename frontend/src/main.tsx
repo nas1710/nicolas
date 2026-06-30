@@ -324,9 +324,11 @@ function PublicBookingPage() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo solicitar el turno.");
-      setSelectedSlot(null);
       const refreshed = await listPublicBookingSlots(doctorId, date, duration).catch(() => []);
       setSlots(refreshed);
+      if (!refreshed.some(slot => slot.starts_at === selectedSlot.starts_at && slot.location_id === selectedSlot.location_id)) {
+        setSelectedSlot(null);
+      }
     } finally {
       setSaving(false);
     }

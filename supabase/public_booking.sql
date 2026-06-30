@@ -441,7 +441,7 @@ begin
   insert into public.appointments (
     starts_at, duration_min, type, reason, status, patient_id, location_id, doctor_id
   ) values (
-    p_starts_at, booking_duration, clean_types[1], '[[MOTIVOS_TURNO:' || type_marker || ']]' || chr(10) || 'Solicitud web',
+    p_starts_at, booking_duration, clean_types[1]::public.study_type, '[[MOTIVOS_TURNO:' || type_marker || ']]' || chr(10) || 'Solicitud web',
     'PENDIENTE', target_patient_id, target_location_id, p_doctor_id
   ) returning id into target_appointment_id;
 

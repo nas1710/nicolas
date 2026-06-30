@@ -108,7 +108,7 @@ create table public.appointments (
   id uuid primary key default gen_random_uuid(),
   starts_at timestamptz not null,
   duration_min int not null default 15,
-  type text not null check (type ~ '^(CONSULTA|ELECTROCARDIOGRAMA|ERGOMETRIA|MAPA|HOLTER)(\+(CONSULTA|ELECTROCARDIOGRAMA|ERGOMETRIA|MAPA|HOLTER))*$'),
+  type public.study_type not null,
   reason text,
   instructions text,
   status public.appointment_status not null default 'PENDIENTE',
