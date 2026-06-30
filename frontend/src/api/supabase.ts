@@ -481,7 +481,7 @@ export async function getCurrentProfile() {
 export async function listPatients(query = "") {
   let request = supabase
     .from("patients")
-    .select("*, insurance_plans(*), locations:locations!patients_location_id_fkey(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
+    .select("*, insurance_plans(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 
@@ -504,7 +504,6 @@ export async function getPatient(id: string) {
     .select(`
       *,
       insurance_plans(*),
-      locations:locations!patients_location_id_fkey(*),
       patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)),
       administrative_notes(*),
       clinical_evolutions(*),
@@ -557,7 +556,7 @@ export async function updatePatientContact(id: string, input: PatientContactInpu
       insurance_plan_id: input.insurance_plan_id || null
     })
     .eq("id", id)
-    .select("*, insurance_plans(*), locations:locations!patients_location_id_fkey(*)")
+    .select("*, insurance_plans(*)")
     .single();
 
   throwIfError(error);

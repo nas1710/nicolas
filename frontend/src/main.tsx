@@ -1179,11 +1179,16 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("activos");
-  const [statusError, setStatusError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   async function refresh() {
-    setPatients(await listPatients(query));
+    try {
+      setLoadError("");
+      setPatients(await listPatients(query));
+    } catch (err) {
+      setPatients([]);
+      setLoadError(err instanceof Error ? err.message : "No se pudo cargar la lista de pacientes.");
+    }
   }
 
   useEffect(() => { refresh(); }, [query]);
@@ -1191,22 +1196,6 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   useEffect(() => { if (openNewKey) setShowForm(true); }, [openNewKey]);
 
   if (selectedId && detail) return <PatientChart patient={detail} profile={profile} notice={patientNotice} onBack={() => { setPatientNotice(""); onClose(); }} />;
-
-  const visiblePatients = patients.filter(patient => {
-    if (statusFilter === "activos") return patient.status !== "baja";
-    if (statusFilter === "inactivos") return patient.status === "baja";
-    return true;
-  });
-
-  async function togglePatient(patient: Patient) {
-    setStatusError("");
-    try {
-      await setPatientActive(patient.id, patient.status === "baja");
-      await refresh();
-    } catch (err) {
-      setStatusError(err instanceof Error ? err.message : "No se pudo cambiar el estado del paciente.");
-    }
-  }
 
   return (
     <Page title="Pacientes" subtitle="Buscar y abrir ficha clinica" actions={<button className="primary" onClick={() => setShowForm(value => !value)}>+ Nuevo paciente</button>}>
@@ -1218,24 +1207,19 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
       }} />}
       <div className="patient-list-toolbar">
         <input className="search" placeholder="Nombre, documento o telefono" value={query} onChange={e => setQuery(e.target.value)} />
-        <div className="segmented status-filter" aria-label="Filtrar pacientes">
-          <button className={statusFilter === "activos" ? "active" : ""} onClick={() => setStatusFilter("activos")}>Activos</button>
-          <button className={statusFilter === "inactivos" ? "active" : ""} onClick={() => setStatusFilter("inactivos")}>Inactivos</button>
-          <button className={statusFilter === "todos" ? "active" : ""} onClick={() => setStatusFilter("todos")}>Todos</button>
-        </div>
       </div>
-      {statusError && <p className="error">{statusError}</p>}
+      {loadError && <p className="error">No se pudieron cargar los pacientes: {loadError}</p>}
       <div className="list patient-list">
-        {visiblePatients.map(p => (
-          <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} onToggle={() => void togglePatient(p)} />
+        {patients.map(p => (
+          <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} />
         ))}
-        {visiblePatients.length === 0 && <p className="empty-day">No hay pacientes en esta vista.</p>}
+        {!loadError && patients.length === 0 && <p className="empty-day">No hay pacientes cargados.</p>}
       </div>
     </Page>
   );
 }
 
-function PatientSearchCard({ patient, onOpen, onToggle }: { patient: Patient; onOpen: () => void; onToggle: () => void }) {
+function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () => void }) {
   const lastVisit = getLastPatientVisit(patient);
   const whatsapp = buildWhatsappUrl(patient.phone, `Hola ${patient.first_name}, le escribimos del consultorio.`);
   const mail = patient.email ? `mailto:${patient.email}?subject=${encodeURIComponent("Consultorio cardiologia")}` : "";
@@ -1261,10 +1245,6 @@ function PatientSearchCard({ patient, onOpen, onToggle }: { patient: Patient; on
         <button className="open-patient" onClick={onOpen}>Abrir historia</button>
         <a className={patient.phone ? "" : "disabled-link"} href={whatsapp || undefined} target="_blank" rel="noreferrer">Enviar WhatsApp</a>
         <a className={patient.email ? "" : "disabled-link"} href={mail || undefined}>Enviar email</a>
-        <label className="status-switch">
-          <input type="checkbox" checked={patient.status !== "baja"} onChange={onToggle} />
-          <span>{patient.status === "baja" ? "Inactivo" : "Activo"}</span>
-        </label>
       </div>
     </article>
   );
