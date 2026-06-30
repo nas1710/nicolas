@@ -691,6 +691,7 @@ h1 { font-size: 28px; margin-bottom: 4px; }
   color: #66747c;
   line-height: 1.35;
 }
+.password-input { position:relative; display:block; }.password-input input { width:100%; padding-right:48px; }.password-input button { position:absolute; top:50%; right:6px; width:36px; height:36px; min-height:36px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:#486169; transform:translateY(-50%); }.password-input button:hover { background:#e8f1f2; }
 .login-secondary-actions {
   display: flex;
   justify-content: space-between;

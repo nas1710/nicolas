@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import {
   formatProperName,
   getCurrentProfile,
@@ -15,6 +16,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
   const [mode, setMode] = useState<"login" | "request" | "reset">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState("");
@@ -51,7 +53,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
       if (mode === "reset") {
         if (!email.trim()) throw new Error("Escribi tu email.");
         await requestPasswordReset(email);
-        setMessage("Te enviamos un email para recuperar la contrasena.");
+        setMessage("Si el email corresponde a un usuario registrado, recibiras el enlace de recuperacion. Revisa tambien Spam.");
         return;
       }
       const profile = await signIn(email, password, remember);
@@ -72,7 +74,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
         {mode !== "login" && <button type="button" className="link login-back" onClick={() => setMode("login")}>Volver al ingreso</button>}
         {mode === "request" && <label>Nombre completo<input value={fullName} onChange={event => setFullName(event.target.value)} onBlur={() => setFullName(formatProperName(fullName))} /></label>}
         <label>Email<input value={email} onChange={event => setEmail(event.target.value)} /></label>
-        {mode !== "reset" && <label>Contrasena<input type="password" value={password} onChange={event => setPassword(event.target.value)} /></label>}
+        {mode !== "reset" && <label>Contrasena<PasswordInput value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="current-password" /></label>}
         {needsEmailConfirmation ? (
           <div className="auth-alert" role="status">
             <span className="auth-alert-mark" aria-hidden="true">!</span>
@@ -102,6 +104,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
 export function PasswordRecovery({ forced = false, onDone }: { forced?: boolean; onDone: (profile: Profile) => void }) {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -130,12 +133,16 @@ export function PasswordRecovery({ forced = false, onDone }: { forced?: boolean;
           <span>SP</span>
           <div><h1>{forced ? "Cambia tu clave provisoria" : "Nueva contrasena"}</h1><p>Elegi una clave personal para tu cuenta</p></div>
         </div>
-        <label>Nueva contrasena<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" /></label>
-        <label>Repetir contrasena<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" /></label>
+        <label>Nueva contrasena<PasswordInput value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="new-password" /></label>
+        <label>Repetir contrasena<PasswordInput value={confirmation} onChange={setConfirmation} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="new-password" /></label>
         <small className="password-hint">Usa al menos 8 caracteres. Evita nombres, DNI o claves compartidas.</small>
         {error && <p className="error login-error">{error}</p>}
         <button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar nueva contrasena"}</button>
       </form>
     </div>
   );
+}
+
+function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: { value: string; onChange: (value: string) => void; visible: boolean; onToggle: () => void; autoComplete: string }) {
+  return <span className="password-input"><input type={visible ? "text" : "password"} value={value} onChange={event => onChange(event.target.value)} autoComplete={autoComplete} /><button type="button" onClick={onToggle} title={visible ? "Ocultar contrasena" : "Mostrar contrasena"} aria-label={visible ? "Ocultar contrasena" : "Mostrar contrasena"}>{visible ? <EyeOff size={20} /> : <Eye size={20} />}</button></span>;
 }
