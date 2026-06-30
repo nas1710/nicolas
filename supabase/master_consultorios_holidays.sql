@@ -6,6 +6,19 @@ begin;
 alter table public.holidays alter column name set default 'Feriado';
 update public.holidays set name = 'Feriado' where btrim(name) = '';
 
+alter table public.holidays enable row level security;
+
+drop policy if exists "holidays read all authenticated" on public.holidays;
+create policy "holidays read all authenticated"
+on public.holidays for select
+using (auth.uid() is not null);
+
+drop policy if exists "holidays admin write" on public.holidays;
+create policy "holidays admin write"
+on public.holidays for all
+using (public.is_admin())
+with check (public.is_admin());
+
 create or replace function public.current_user_is_master()
 returns boolean
 language sql
@@ -46,11 +59,15 @@ $$;
 
 grant execute on function public.delete_location_if_unused(uuid) to authenticated;
 
+alter table public.locations enable row level security;
+
 drop policy if exists "locations admin write" on public.locations;
 drop policy if exists "locations master write" on public.locations;
 create policy "locations master write"
 on public.locations for all
 using (public.current_user_is_master())
 with check (public.current_user_is_master());
+
+notify pgrst, 'reload schema';
 
 commit;
