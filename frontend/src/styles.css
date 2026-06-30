@@ -338,13 +338,18 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 }
 
 .logout-button {
-  margin-top: auto;
+  margin-top: 0;
   color: #ffcfc7 !important;
   background: rgba(255,255,255,0.05) !important;
   border: 1px solid rgba(255,255,255,0.08);
   text-align: center !important;
   border-radius: 12px;
   min-height: 42px;
+}
+.top-logout {
+  min-height: 34px;
+  font-size: 12px;
+  margin-top: -8px;
 }
 .mobile-more-button,
 .mobile-more-menu {
@@ -1301,6 +1306,19 @@ input, select, textarea {
   font-style: normal;
   vertical-align: middle;
 }
+.pending-validation-badge {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fff0bd;
+  color: #735100;
+  font-size: 11px;
+  font-style: normal;
+  vertical-align: middle;
+}
+.patient-card:has(.pending-validation-badge) { border-left: 5px solid #e2ad27; background: #fffdf5; }
+.validate-patient-action { background: #176f78 !important; color: white !important; }
 
 .active-filter {
   box-shadow: inset 0 0 0 2px #176f78;
@@ -1366,6 +1384,20 @@ input, select, textarea {
 
 .user-list-toolbar {
   margin: 0;
+  min-height: 42px;
+}
+
+.user-list-toolbar .status-filter {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: #edf3f5;
+}
+
+.user-list-toolbar .status-filter button {
+  min-width: auto;
+  min-height: 34px;
+  padding: 6px 11px;
 }
 
 .user-card {
@@ -1545,7 +1577,7 @@ input, select, textarea {
 
 .agenda-command {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) 410px;
+  grid-template-columns: minmax(360px, 1fr) 320px;
   gap: 10px 14px;
   align-items: start;
   border: 1px solid #dce4e8;
@@ -1625,7 +1657,7 @@ input, select, textarea {
 }
 
 .mini-calendar {
-  width: 392px;
+  width: 310px;
   max-width: 100%;
   border: 1px solid #dce4e8;
   border-radius: 10px;
@@ -2420,6 +2452,21 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   border-radius: 8px;
   background: #f8fbfc;
 }
+.public-date-time-picker {
+  display: grid;
+  grid-template-columns: minmax(300px, .9fr) minmax(260px, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+.public-times-panel {
+  min-height: 100%;
+  padding: 12px;
+  border: 1px solid #cbdadd;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+.public-times-panel > strong { display: block; margin-bottom: 10px; }
+.public-date-time-picker .public-slot-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
 
 .public-calendar-head {
   display: grid;
@@ -3006,6 +3053,10 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
 
   .doctor-options,
   .public-patient-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-date-time-picker {
     grid-template-columns: 1fr;
   }
 

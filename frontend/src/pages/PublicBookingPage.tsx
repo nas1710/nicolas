@@ -179,9 +179,12 @@ export function PublicBookingPage() {
             )}
             <AppointmentTypePicker value={types} onChange={setTypes} />
             <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
-            <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={toDateInputValue(maxDateValue)} onMonthChange={setCalendarMonth} onSelect={setDate} />
-            {loadingDates && <p className="public-calendar-loading" role="status">Cargando fechas disponibles...</p>}
-            <div className="public-slot-grid">
+            <div className="public-date-time-picker">
+              <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={toDateInputValue(maxDateValue)} onMonthChange={setCalendarMonth} onSelect={setDate} />
+              <div className="public-times-panel">
+                <strong>Horarios del {new Date(`${date}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}</strong>
+                {loadingDates && <p className="public-calendar-loading" role="status">Cargando fechas disponibles...</p>}
+                <div className="public-slot-grid">
               {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
               {!loadingSlots && doctorId && slots.map(slot => {
                 const value = new Date(slot.starts_at);
@@ -189,6 +192,8 @@ export function PublicBookingPage() {
               })}
               {!loadingSlots && doctorId && slots.length === 0 && <p className="empty-day">No hay horarios libres para esta fecha. Probá otro día.</p>}
               {!doctorId && <p className="empty-day">Elegí un profesional para ver horarios.</p>}
+                </div>
+              </div>
             </div>
           </section>
           <section className={`public-patient-form ${selectedSlot ? "ready" : ""}`}>

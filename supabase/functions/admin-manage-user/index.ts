@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type ManagedRole = "MEDICA_ADMIN" | "SECRETARIA";
+type ManagedRole = "ADMINISTRADOR" | "MEDICA_ADMIN" | "SECRETARIA";
+
+function managedRole(value: unknown): ManagedRole {
+  if (value === "ADMINISTRADOR") return "ADMINISTRADOR";
+  if (value === "MEDICA_ADMIN" || value === "MEDICO") return "MEDICA_ADMIN";
+  return "SECRETARIA";
+}
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -50,8 +56,8 @@ Deno.serve(async request => {
       .select("id, role, active, is_master")
       .eq("id", authData.user.id)
       .single();
-    if (requesterError || !requester?.active || requester.role !== "MEDICA_ADMIN") {
-      throw new Error("Solo una medica/admin activa puede administrar accesos.");
+    if (requesterError || !requester?.active || !requester.is_master) {
+      throw new Error("Solo el usuario Maestro puede administrar accesos.");
     }
 
     const body = await request.json();
@@ -61,7 +67,7 @@ Deno.serve(async request => {
       const email = text(body.email).toLowerCase();
       const password = String(body.password || "");
       const fullName = text(body.full_name);
-      const role: ManagedRole = body.role === "MEDICA_ADMIN" ? "MEDICA_ADMIN" : "SECRETARIA";
+      const role = managedRole(body.role);
       const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
       const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");
@@ -70,32 +76,51 @@ Deno.serve(async request => {
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
 
-      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: fullName }
-      });
-      if (createError) throw createError;
+      const { data: listed, error: listError } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (listError) throw listError;
+      const existing = listed.users.find(user => user.email?.toLowerCase() === email);
+      let authUser = existing || null;
+      if (existing) {
+        const { data: existingProfile } = await adminClient.from("profiles").select("id, active").eq("id", existing.id).maybeSingle();
+        if (existingProfile?.active) throw new Error("Ya existe un usuario activo con ese email.");
+        const { data: updated, error: updateError } = await adminClient.auth.admin.updateUserById(existing.id, {
+          email,
+          password,
+          email_confirm: true,
+          ban_duration: "none",
+          user_metadata: { full_name: fullName }
+        });
+        if (updateError) throw updateError;
+        authUser = updated.user;
+      } else {
+        const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: fullName }
+        });
+        if (createError) throw createError;
+        authUser = created.user;
+      }
+      if (!authUser) throw new Error("No se pudo crear o habilitar el acceso.");
 
       const { data: profile, error: profileError } = await adminClient
         .from("profiles")
         .upsert({
-          id: created.user.id,
+          id: authUser.id,
           email,
           full_name: fullName,
           role,
           location_id: locationId,
           active: true,
           document_number: documentNumber,
-          must_change_password: false,
+          must_change_password: true,
           is_master: false
         })
         .select("*, location:locations(*)")
         .single();
       if (profileError) {
-        await adminClient.from("profiles").delete().eq("id", created.user.id);
-        await adminClient.auth.admin.deleteUser(created.user.id);
+        if (!existing) await adminClient.auth.admin.deleteUser(authUser.id);
         throw profileError;
       }
       return json({ profile }, corsHeaders);
@@ -167,7 +192,7 @@ Deno.serve(async request => {
         .select("*, location:locations(*)")
         .single();
       if (profileError) throw profileError;
-      const { error: unbanError } = await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none" });
+      const { error: unbanError } = await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none", email_confirm: true });
       if (unbanError) {
         await adminClient.from("profiles").update({ active: false }).eq("id", target.id);
         throw unbanError;
@@ -179,7 +204,7 @@ Deno.serve(async request => {
       if (target.is_master) throw new Error("Los datos y privilegios del usuario Maestro estan protegidos.");
       const email = text(body.email).toLowerCase();
       const fullName = text(body.full_name);
-      const role: ManagedRole = body.role === "MEDICA_ADMIN" ? "MEDICA_ADMIN" : "SECRETARIA";
+      const role = managedRole(body.role);
       const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
       const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");

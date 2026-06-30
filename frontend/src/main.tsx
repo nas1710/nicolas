@@ -49,6 +49,7 @@ import {
   updateHoliday,
   updateLocation,
   updatePatientContact,
+  validateWebPatient,
   uploadPatientAttachment,
   createSignedAttachmentUrl,
   Attachment
@@ -73,6 +74,7 @@ import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
 import { PublicBookingPage } from "./pages/PublicBookingPage";
 import { toDateInputValue } from "./utils/dates";
 import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
+import { canAccessClinical, canManageConfiguration, canManageUsers, roleLabel } from "./utils/permissions";
 import "./styles.css";
 
 type View = "inicio" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios";
@@ -181,9 +183,10 @@ function App() {
           <span className="brand">SP</span>
           <div>
             <strong>{profile.full_name}</strong>
-            <span>{profile.role === "MEDICA_ADMIN" ? "Medica/Admin" : profile.location?.name || "Secretaria"}</span>
+            <span>{roleLabel(profile)}</span>
           </div>
         </button>
+        <button className="logout-button top-logout" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <button className="nav-cta" onClick={navigateNewAppointment}>
           <span>+</span>
           Nuevo turno
@@ -199,7 +202,7 @@ function App() {
         <nav className="nav-group">
           <span>Administracion</span>
           <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
-          {profile.role === "MEDICA_ADMIN" && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Roles y consultorios" onClick={() => navigate("usuarios")} />}
+          {canManageUsers(profile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
         </nav>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
           <span className="nav-icon">MA</span><span>Mas</span>
@@ -208,10 +211,9 @@ function App() {
           <button onClick={() => navigate("estudios")}>Estudios y documentos</button>
           <button onClick={() => navigate("tareas")}>Tareas</button>
           <button onClick={() => navigate("ajustes")}>Ajustes</button>
-          {profile.role === "MEDICA_ADMIN" && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
+          {canManageUsers(profile) && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
           <button className="danger-action" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         </div>}
-        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
       </aside>
       <main>
         {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
@@ -220,7 +222,7 @@ function App() {
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
-        {view === "usuarios" && profile.role === "MEDICA_ADMIN" && <Users key={`usuarios-${viewResetKey}`} />}
+        {view === "usuarios" && canManageUsers(profile) && <Users key={`usuarios-${viewResetKey}`} />}
       </main>
     </div>
   );
@@ -367,7 +369,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
   const [showForm, setShowForm] = useState(false);
   const [draftAppointment, setDraftAppointment] = useState<{ starts_at: string; location_id: string; duration_min: number } | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-  const [mode, setMode] = useState<"dia" | "semana">("semana");
+  const [mode, setMode] = useState<"dia" | "semana">("dia");
   const officialClock = useBuenosAiresClock();
   const [currentDate, setCurrentDate] = useState(officialClock.today);
   const [selectedAgendaKey, setSelectedAgendaKey] = useState<string | null>(null);
@@ -722,7 +724,7 @@ function hasAvailabilityOnDate(date: Date, availability: MedicalAvailability[] =
   return (availability || []).some(slot =>
     slot.enabled
     && slot.weekday === date.getDay()
-    && (profile.role === "MEDICA_ADMIN" || slot.location_id === profile.location_id)
+    && (canAccessClinical(profile) || slot.location_id === profile.location_id)
   );
 }
 
@@ -795,7 +797,7 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
       {loadError && <p className="error">No se pudieron cargar los pacientes: {loadError}</p>}
       <div className="list patient-list">
         {visiblePatients.map(p => (
-          <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} />
+          <PatientSearchCard key={p.id} patient={p} onValidated={refresh} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} />
         ))}
         {!loadError && visiblePatients.length === 0 && <p className="empty-day">{patients.length ? "No hay pacientes activos en esta vista." : "No hay pacientes cargados."}</p>}
       </div>
@@ -803,7 +805,7 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   );
 }
 
-function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () => void }) {
+function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient; onOpen: () => void; onValidated: () => Promise<void> }) {
   const lastVisit = getLastPatientVisit(patient);
   const whatsapp = buildWhatsappUrl(patient.phone, `Hola ${patient.first_name}, le escribimos del consultorio.`);
   const mail = patient.email ? `mailto:${patient.email}?subject=${encodeURIComponent("Consultorio cardiologia")}` : "";
@@ -814,8 +816,8 @@ function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () =
         <button className="patient-identity" onClick={onOpen}>
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
           <span>
-            <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>}</strong>
-            <small>{formatPatientDocument(patient)} · {patient.insurance_plans?.name || "Sin obra social"} · {patientConsultorios(patient)}</small>
+            <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>} {patient.validation_status === "PENDIENTE" && <em className="pending-validation-badge">Pendiente de validacion</em>}</strong>
+            <small>{formatPatientDocument(patient)}</small>
           </span>
         </button>
         <div className="patient-quick-data">
@@ -826,6 +828,7 @@ function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () =
       </div>
 
       <div className="quick-actions">
+        {patient.validation_status === "PENDIENTE" && <button className="validate-patient-action" onClick={async () => { await validateWebPatient(patient.id); await onValidated(); }}>Validar paciente</button>}
         <button className="open-patient" onClick={onOpen}>Abrir historia</button>
         <a className={patient.phone ? "" : "disabled-link"} href={whatsapp || undefined} target="_blank" rel="noreferrer">Enviar WhatsApp</a>
         <a className={patient.email ? "" : "disabled-link"} href={mail || undefined}>Enviar email</a>
@@ -1058,7 +1061,7 @@ function AppointmentForm({
     getConfiguration().then(data => setConfig({ locations: data.locations, insurancePlans: data.insurancePlans, availability: data.availability }));
   }, []);
 
-  const activeLocations = (config?.locations || []).filter(location => location.active && (profile.role === "MEDICA_ADMIN" || location.id === profile.location_id));
+  const activeLocations = (config?.locations || []).filter(location => location.active && (canAccessClinical(profile) || location.id === profile.location_id));
   const selectedLocation = activeLocations.find(location => location.id === selectedLocationId) || null;
   const availableSlots = getEligibleAvailability(profile, config?.availability || []).filter(slot => slot.location_id === selectedLocationId);
   const matchingAvailability = findAvailabilityForAppointment(form.starts_at, form.duration_min, availableSlots);
@@ -1369,9 +1372,7 @@ function formatPatientDocument(patient: Pick<Patient, "document_type" | "documen
 }
 
 function patientConsultorios(patient: Patient) {
-  const linked = (patient.patient_locations || [])
-    .map(item => item.locations?.name)
-    .filter((name): name is string => Boolean(name));
+  const linked = (patient.patient_locations || []).map(item => item.locations?.name).filter((name): name is string => Boolean(name));
   return [...new Set(linked)].join(", ") || "Sin consultorio";
 }
 
@@ -1421,7 +1422,7 @@ function buildAgendaSlots(day: Date, availability: MedicalAvailability[], appoin
   const slots = availability
     .filter(slot => slot.enabled && slot.weekday === day.getDay())
     .filter(slot => !isHoliday(day, holidays, slot.doctor_id))
-    .filter(slot => profile.role === "MEDICA_ADMIN" || slot.location_id === profile.location_id)
+    .filter(slot => canAccessClinical(profile) || slot.location_id === profile.location_id)
     .flatMap(slot => {
       const start = timeToMinutes(slot.start_time);
       const end = timeToMinutes(slot.end_time);
@@ -1526,7 +1527,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       subtitle="Ficha clinica del paciente"
       actions={
         <>
-          {profile.role === "MEDICA_ADMIN" && <button className="secondary-action" onClick={() => printClinicalHistory(currentPatient, profile)}>Imprimir historia / PDF</button>}
+          {canAccessClinical(profile) && <button className="secondary-action" onClick={() => printClinicalHistory(currentPatient, profile)}>Imprimir historia / PDF</button>}
           <button onClick={onBack}>Volver a pacientes</button>
         </>
       }
@@ -1534,12 +1535,12 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       {notice && <p className="notice ok-notice">{notice}</p>}
       {currentPatient.status === "baja" && <p className="notice">Paciente dado de baja. La historia queda conservada.</p>}
       <div className="clinical-actions">
-        {profile.role === "MEDICA_ADMIN" && <button className={panel === "historia" ? "primary" : ""} onClick={() => setPanel("historia")}>Historia clinica</button>}
+        {canAccessClinical(profile) && <button className={panel === "historia" ? "primary" : ""} onClick={() => setPanel("historia")}>Historia clinica</button>}
         <button className={panel === "datos" ? "primary" : "secondary-action"} onClick={() => setPanel("datos")}>Editar datos</button>
         <button className={panel === "adjuntos" ? "primary" : "secondary-action"} onClick={() => setPanel("adjuntos")}>Adjuntar estudio</button>
         <button className={panel === "enviar" ? "primary" : "secondary-action"} onClick={() => setPanel("enviar")}>Enviar documentos</button>
         <button className={panel === "nota" ? "primary" : "secondary-action"} onClick={() => setPanel("nota")}>Nota administrativa</button>
-        {profile.role === "MEDICA_ADMIN" && <button className={currentPatient.status === "baja" ? "primary" : "danger-action"} onClick={() => void togglePatientStatus()}>{currentPatient.status === "baja" ? "Reactivar paciente" : "Dar de baja"}</button>}
+        {canAccessClinical(profile) && <button className={currentPatient.status === "baja" ? "primary" : "danger-action"} onClick={() => void togglePatientStatus()}>{currentPatient.status === "baja" ? "Reactivar paciente" : "Dar de baja"}</button>}
       </div>
 
       <section className="summary">
@@ -1553,7 +1554,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       </section>
 
       {panel === "datos" && <PatientContactForm patient={currentPatient} onSaved={refresh} />}
-      {panel === "historia" && profile.role === "MEDICA_ADMIN" && <ClinicalEvolutionForm patient={currentPatient} onSaved={refresh} />}
+      {panel === "historia" && canAccessClinical(profile) && <ClinicalEvolutionForm patient={currentPatient} onSaved={refresh} />}
       {panel === "historia" && profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas y no se muestran para secretaria.</p>}
       {panel === "adjuntos" && <AttachmentForm patient={currentPatient} onUploaded={refresh} />}
       {panel === "nota" && <AdministrativeNoteForm patient={currentPatient} onSaved={refresh} />}
@@ -1565,7 +1566,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       <AttachmentList attachments={currentPatient.attachments || []} />
       <h2>Historial</h2>
       {profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas por RLS y no se muestran para secretaria.</p>}
-      {profile.role === "MEDICA_ADMIN" && (currentPatient.clinical_evolutions || []).map(e => (
+      {canAccessClinical(profile) && (currentPatient.clinical_evolutions || []).map(e => (
         <article className="timeline" key={e.id}>
           <strong>{new Date(e.occurred_at).toLocaleDateString()} - {e.reason}</strong>
           {e.diagnosis && <p><b>Diagnostico:</b> {e.diagnosis}</p>}
@@ -1633,7 +1634,7 @@ function buildClinicalHistoryHtml(patient: Patient, profile: Profile) {
     </div>
     <div>
       <p><strong>Profesional:</strong> ${escapeHtml(profile.full_name)}</p>
-      <p><strong>Rol:</strong> ${profile.role === "MEDICA_ADMIN" ? "Medica/Admin" : "Secretaria"}</p>
+      <p><strong>Rol:</strong> ${roleLabel(profile)}</p>
       <p><strong>Consultorio:</strong> ${escapeHtml(doctorLocation)}</p>
       <p><strong>Email:</strong> ${escapeHtml(profile.email)}</p>
     </div>
@@ -1860,7 +1861,7 @@ function DocumentShareForm({ patient, profile }: { patient: Patient; profile: Pr
         <label className="full-field">Mensaje<textarea value={message} onChange={event => setMessage(event.target.value)} /></label>
       </div>
 
-      {profile.role === "MEDICA_ADMIN" && (
+      {canAccessClinical(profile) && (
         <label className="check-row">
           <input type="checkbox" checked={includeHistory} onChange={event => { setIncludeHistory(event.target.checked); setPrepared(false); }} />
           Incluir historia clinica completa para imprimir/guardar como PDF
@@ -2208,20 +2209,19 @@ function Settings({ profile }: { profile: Profile }) {
   async function refresh() {
     const config = await getConfiguration();
     setData({ insurancePlans: config.insurancePlans, locations: config.locations, availability: config.availability, holidays: config.holidays });
-    if (profile.role === "MEDICA_ADMIN") setUsers(await listProfiles());
+    if (canManageUsers(profile)) setUsers(await listProfiles());
   }
 
   useEffect(() => { refresh(); }, []);
   return (
     <Page title="Ajustes" subtitle="Consultorios, obras sociales y usuarios">
-      {profile.role !== "MEDICA_ADMIN" && <p className="notice">Solo la medica/admin puede modificar horarios, feriados, obras sociales y usuarios.</p>}
+      {!canManageConfiguration(profile) && <p className="notice">Tu acceso permite consultar la configuracion, pero no modificarla.</p>}
       {data && (
         <div className="admin-grid">
           <LocationManager locations={data.locations} canEdit={profile.is_master} onSaved={refresh} />
-          <InsuranceManager plans={data.insurancePlans} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
-          <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
-          <HolidayManager holidays={data.holidays} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
-          {profile.role === "MEDICA_ADMIN" && <UserManager users={users} locations={data.locations} onSaved={refresh} />}
+          <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
+          <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
+          <HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
         </div>
       )}
     </Page>

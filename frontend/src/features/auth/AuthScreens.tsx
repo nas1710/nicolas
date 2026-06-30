@@ -88,7 +88,6 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
         {message && <p className="notice ok-notice">{message}</p>}
         {mode === "login" && <label className="remember-session"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Recordarme en este dispositivo</label>}
         <button className="primary">{mode === "login" ? "Ingresar" : mode === "request" ? "Solicitar acceso" : "Enviar recuperacion"}</button>
-        {mode === "login" && <a className="public-booking-login-link" href="/turnos">Solicitar un turno online</a>}
         {mode === "login" && (
           <div className="login-secondary-actions">
             <button type="button" className="link" onClick={() => setMode("reset")}>Olvide mi contrasena</button>

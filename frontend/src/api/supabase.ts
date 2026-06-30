@@ -45,7 +45,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-export type Role = "MEDICA_ADMIN" | "SECRETARIA";
+export type Role = "MEDICA_ADMIN" | "ADMINISTRADOR" | "MEDICO" | "SECRETARIA";
 export type IdentityDocumentType = "DNI" | "LC" | "LE" | "PASAPORTE" | "CEDULA_IDENTIDAD" | "DOCUMENTO_EXTRANJERO";
 
 export type Location = {
@@ -153,6 +153,8 @@ export type Patient = {
   phone: string | null;
   email: string | null;
   status: string;
+  source?: "INTERNAL" | "WEB";
+  validation_status?: "PENDIENTE" | "VALIDADO" | "ARCHIVADO_NO_VALIDADO";
   affiliate_number: string | null;
   insurance_plan_id: string | null;
   insurance_plans?: InsurancePlan | null;
@@ -519,9 +521,11 @@ export async function getCurrentProfile() {
 }
 
 export async function listPatients(query = "") {
+  await supabase.rpc("archive_expired_web_patients");
   let request = supabase
     .from("patients")
     .select("*, insurance_plans(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
+    .neq("validation_status", "ARCHIVADO_NO_VALIDADO")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 
@@ -536,6 +540,11 @@ export async function listPatients(query = "") {
   const { data, error } = await request;
   throwIfError(error);
   return (data || []) as Patient[];
+}
+
+export async function validateWebPatient(id: string) {
+  const { error } = await supabase.rpc("validate_web_patient", { target_patient_id: id });
+  throwIfError(error);
 }
 
 export async function getPatient(id: string) {
@@ -1026,6 +1035,7 @@ export async function listProfiles() {
   const { data, error } = await supabase
     .from("profiles")
     .select("*, location:locations(*)")
+    .eq("is_master", false)
     .order("full_name");
   throwIfError(error);
   return (data || []) as Profile[];

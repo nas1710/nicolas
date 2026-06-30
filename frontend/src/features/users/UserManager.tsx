@@ -17,7 +17,7 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("activos");
+  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("todos");
   const visibleUsers = users.filter(user => statusFilter === "todos" || (statusFilter === "activos" ? user.active : !user.active));
 
   async function submit(event: React.FormEvent) {
@@ -33,7 +33,7 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
       const created = await createUserWithLogin(form);
       setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "" });
       await onSaved();
-      setMessage(`${created.full_name} fue dada de alta. Ya puede ingresar; si recibe un email de confirmacion, debe abrirlo primero.`);
+      setMessage(`${created.full_name} fue dado de alta y ya puede ingresar con su clave inicial.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el usuario.");
     } finally {
@@ -56,11 +56,12 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
             <label>Rol
               <select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
                 <option value="SECRETARIA">Secretaria</option>
-                <option value="MEDICA_ADMIN">Medica/Admin</option>
+                <option value="MEDICA_ADMIN">Medico</option>
+                <option value="ADMINISTRADOR">Administrador</option>
               </select>
             </label>
             <label>Consultorio
-              <select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
+              <select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role !== "SECRETARIA"}>
                 <option value="">Elegir consultorio</option>
                 {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
               </select>
@@ -157,7 +158,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
           <div><strong>{user.full_name}</strong><small>{user.email}</small></div>
         </div>
         <div className="user-card-meta">
-          <span>{user.role === "MEDICA_ADMIN" ? "Medica/Admin" : "Secretaria"}</span>
+          <span>{user.role === "ADMINISTRADOR" ? "Administrador" : user.role === "SECRETARIA" ? "Secretaria" : "Medico"}</span>
           <span>{user.location?.name || "Todos los consultorios"}</span>
           {user.document_number && <span>DNI {formatDocumentNumber("DNI", user.document_number, "")}</span>}
         </div>
@@ -182,9 +183,9 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
         <label>Email<input value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></label>
         <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={event => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", event.target.value) })} inputMode="numeric" /></label>
         <label>Rol<select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
-          <option value="SECRETARIA">Secretaria</option><option value="MEDICA_ADMIN">Medica/Admin</option>
+          <option value="SECRETARIA">Secretaria</option><option value="MEDICA_ADMIN">Medico</option><option value="ADMINISTRADOR">Administrador</option>
         </select></label>
-        <label>Consultorio<select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
+        <label>Consultorio<select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role !== "SECRETARIA"}>
           <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
         </select></label>
       </div>
