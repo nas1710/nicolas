@@ -18,7 +18,9 @@ import {
   formatDocumentNumber,
   formatProperName,
   getConfiguration,
+  getBuenosAiresClock,
   getCurrentProfile,
+  getRememberSessionPreference,
   getPatient,
   Holiday,
   IdentityDocumentType,
@@ -226,8 +228,9 @@ function App() {
 }
 
 function PublicBookingPage() {
-  const today = toDateInputValue(new Date());
-  const maxDateValue = new Date();
+  const officialClock = useBuenosAiresClock();
+  const today = officialClock.today;
+  const maxDateValue = new Date(`${today}T12:00:00`);
   maxDateValue.setDate(maxDateValue.getDate() + 90);
   const [doctors, setDoctors] = useState<PublicBookingDoctor[]>([]);
   const [insurancePlans, setInsurancePlans] = useState<Pick<InsurancePlan, "id" | "name">[]>([]);
@@ -236,6 +239,7 @@ function PublicBookingPage() {
   const [date, setDate] = useState(today);
   const [calendarMonth, setCalendarMonth] = useState(today.slice(0, 7));
   const [availableDates, setAvailableDates] = useState<PublicBookingDate[]>([]);
+  const [loadingDates, setLoadingDates] = useState(false);
   const [slots, setSlots] = useState<PublicBookingSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<PublicBookingSlot | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -269,21 +273,25 @@ function PublicBookingPage() {
   useEffect(() => {
     if (!doctorId || types.length === 0) {
       setAvailableDates([]);
+      setLoadingDates(false);
       return;
     }
     const { first, last } = calendarMonthBounds(calendarMonth, today, toDateInputValue(maxDateValue));
     if (!first || !last) {
       setAvailableDates([]);
+      setLoadingDates(false);
       return;
     }
     let cancelled = false;
+    setLoadingDates(true);
     listPublicBookingDates(doctorId, first, last, duration)
       .then(items => {
         if (cancelled) return;
         setAvailableDates(items);
         if (!items.some(item => item.date === date) && items[0]) setDate(items[0].date);
       })
-      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar el almanaque."); });
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar el almanaque."); })
+      .finally(() => { if (!cancelled) setLoadingDates(false); });
     return () => { cancelled = true; };
   }, [doctorId, calendarMonth, duration]);
 
@@ -396,6 +404,7 @@ function PublicBookingPage() {
               onMonthChange={setCalendarMonth}
               onSelect={setDate}
             />
+            {loadingDates && <p className="public-calendar-loading" role="status">Cargando fechas disponibles...</p>}
             <div className="public-slot-grid">
               {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
               {!loadingSlots && doctorId && slots.map(slot => {
@@ -498,6 +507,41 @@ function publicBookingDuration(types: AppointmentTypeCode[]) {
   return types.reduce((total, type) => total + (type === "CONSULTA" || type === "ELECTROCARDIOGRAMA" ? 15 : 30), 0);
 }
 
+function useBuenosAiresClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = 0;
+    getBuenosAiresClock()
+      .then(clock => {
+        if (cancelled) return;
+        const offset = new Date(clock.now).getTime() - Date.now();
+        const update = () => setNow(new Date(Date.now() + offset));
+        update();
+        timer = window.setInterval(update, 60_000);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, []);
+
+  return { now, today: buenosAiresDateInput(now) };
+}
+
+function buenosAiresDateInput(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 function Login({ initialError = "", onLogin }: { initialError?: string; onLogin: (profile: Profile) => void }) {
   const [mode, setMode] = useState<"login" | "request" | "reset">("login");
   const [email, setEmail] = useState("");
@@ -506,6 +550,7 @@ function Login({ initialError = "", onLogin }: { initialError?: string; onLogin:
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState("");
   const [resending, setResending] = useState(false);
+  const [remember, setRemember] = useState(getRememberSessionPreference());
   const needsEmailConfirmation = error.includes("confirma tu email");
 
   async function resendConfirmation() {
@@ -540,7 +585,7 @@ function Login({ initialError = "", onLogin }: { initialError?: string; onLogin:
         setMessage("Te enviamos un email para recuperar la contrasena.");
         return;
       }
-      const profile = await signIn(email, password);
+      const profile = await signIn(email, password, remember);
       if (!profile) throw new Error("El usuario no tiene perfil configurado.");
       onLogin(profile);
     } catch (err) {
@@ -575,6 +620,7 @@ function Login({ initialError = "", onLogin }: { initialError?: string; onLogin:
           </div>
         ) : error ? <p className="error login-error">{error}</p> : null}
         {message && <p className="notice ok-notice">{message}</p>}
+        {mode === "login" && <label className="remember-session"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Recordarme en este dispositivo</label>}
         <button className="primary">{mode === "login" ? "Ingresar" : mode === "request" ? "Solicitar acceso" : "Enviar recuperacion"}</button>
         {mode === "login" && <a className="public-booking-login-link" href="/turnos">Solicitar un turno online</a>}
         {mode === "login" && (
@@ -643,7 +689,8 @@ function Dashboard({ onNavigate, onNewPatient, onOpenPatient }: { onNavigate: (v
     });
   }, []);
 
-  const today = new Date();
+  const officialClock = useBuenosAiresClock();
+  const today = officialClock.now;
   const todayAppointments = appointments
     .filter(appointment => appointment.status !== "CANCELADO" && sameLocalDate(new Date(appointment.starts_at), today))
     .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
@@ -770,8 +817,10 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
   const [draftAppointment, setDraftAppointment] = useState<{ starts_at: string; location_id: string; duration_min: number } | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [mode, setMode] = useState<"dia" | "semana">("semana");
-  const [currentDate, setCurrentDate] = useState(() => toDateInputValue(new Date()));
+  const officialClock = useBuenosAiresClock();
+  const [currentDate, setCurrentDate] = useState(officialClock.today);
   const [selectedAgendaKey, setSelectedAgendaKey] = useState<string | null>(null);
+  const [locationFilter, setLocationFilter] = useState("");
 
   async function refresh() {
     const [nextAppointments, config] = await Promise.all([listAppointments(), getConfiguration()]);
@@ -781,22 +830,30 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
   }
 
   useEffect(() => { refresh(); }, []);
+  useEffect(() => { setCurrentDate(officialClock.today); }, [officialClock.today]);
 
   const days = mode === "dia" ? [new Date(`${currentDate}T12:00:00`)] : getWeekDays(currentDate);
   const visibleAppointments = (appointments || []).filter(appointment => (days || []).some(day => sameLocalDate(new Date(appointment.starts_at), day)));
-  const dayModels = days.map(day => {
+  const unfilteredDayModels = days.map(day => {
     const dayAppointments = visibleAppointments
       .filter(appointment => sameLocalDate(new Date(appointment.starts_at), day))
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
     return { day, slots: buildAgendaSlots(day, availability, dayAppointments, profile, holidays) };
   });
+  const allUnfilteredSlots = unfilteredDayModels.flatMap(model => model.slots);
+  const consultorioOptions = Array.from(
+    new Map(allUnfilteredSlots.map(slot => [slot.locationId, { id: slot.locationId, name: slot.locationName }])).values()
+  );
+  const dayModels = unfilteredDayModels.map(model => ({
+    ...model,
+    slots: locationFilter ? model.slots.filter(slot => slot.locationId === locationFilter) : model.slots
+  }));
   const allSlots = dayModels.flatMap(model => model.slots);
   const occupiedSlots = allSlots.filter(slot => slot.appointment);
   const freeSlots = allSlots.filter(slot => !slot.appointment);
-  const activeConsultorios = Array.from(new Set(allSlots.map(slot => slot.locationName))).filter(Boolean);
   const selectedDaySlot = mode === "dia" ? allSlots.find(slot => slot.key === selectedAgendaKey) || occupiedSlots[0] || allSlots[0] || null : null;
   const availabilitySummary = getEligibleAvailability(profile, availability)
-    .filter(slot => slot.enabled)
+    .filter(slot => slot.enabled && (!locationFilter || slot.location_id === locationFilter))
     .sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time))
     .slice(0, 5);
 
@@ -820,11 +877,6 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
 
   function handleSlotClick(slot: AgendaSlot) {
     setSelectedAgendaKey(slot.key);
-    if (slot.appointment) {
-      openEditAppointment(slot.appointment);
-      return;
-    }
-    openNewAppointment({ starts_at: slot.startsAt, location_id: slot.locationId, duration_min: slot.durationMin });
   }
 
   useEffect(() => {
@@ -864,7 +916,10 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
             <strong>{occupiedSlots.length} ocupados · {freeSlots.length} libres</strong>
           </div>
           <div className="consultorio-strip">
-            {activeConsultorios.length ? activeConsultorios.map(name => <span key={name}>{name}</span>) : <span>Sin consultorio configurado</span>}
+            {consultorioOptions.length ? <>
+              <button type="button" className={!locationFilter ? "active" : ""} onClick={() => { setLocationFilter(""); setSelectedAgendaKey(null); }}>Todos</button>
+              {consultorioOptions.map(location => <button type="button" className={locationFilter === location.id ? "active" : ""} key={location.id} onClick={() => { setLocationFilter(location.id); setSelectedAgendaKey(null); }}>{location.name}</button>)}
+            </> : <span>Sin consultorio configurado</span>}
           </div>
         </div>
         <div className="availability-strip">
@@ -885,6 +940,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
             availability={availability}
             holidays={holidays}
             profile={profile}
+            officialToday={officialClock.today}
             onChange={date => {
               setCurrentDate(date);
               setSelectedAgendaKey(null);
@@ -913,7 +969,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
               <h2>{weekdayName(day.getDay())} <span>{day.toLocaleDateString()}</span></h2>
               {daySlots.length === 0 && <p className="empty-day">Sin atencion configurada</p>}
               {daySlots.map(slot => (
-                <article className={`${slot.appointment ? `appointment-card occupied-slot ${appointmentStatusClass(slot.appointment.status)} ${primaryAppointmentTypeClass(appointmentTypeValue(slot.appointment))}` : "appointment-card free-slot"} ${selectedDaySlot?.key === slot.key ? "selected-slot" : ""}`} key={slot.key}>
+                <article className={`${slot.appointment ? `appointment-card occupied-slot ${appointmentStatusClass(slot.appointment.status)} ${primaryAppointmentTypeClass(appointmentTypeValue(slot.appointment))}` : "appointment-card free-slot"} ${selectedAgendaKey === slot.key ? "selected-slot" : ""}`} key={slot.key}>
                   {slot.appointment ? (
                     <>
                       <button className="slot-button" type="button" onClick={() => handleSlotClick(slot)} onDoubleClick={() => openEditAppointment(slot.appointment!)}>
@@ -1019,6 +1075,7 @@ function AgendaDayDetail({
 
 function AgendaMiniCalendar({
   currentDate,
+  officialToday,
   appointments,
   availability,
   holidays,
@@ -1026,6 +1083,7 @@ function AgendaMiniCalendar({
   onChange
 }: {
   currentDate: string;
+  officialToday: string;
   appointments: Appointment[];
   availability: MedicalAvailability[];
   holidays: Holiday[];
@@ -1071,7 +1129,7 @@ function AgendaMiniCalendar({
           {years.map(item => <option key={item} value={item}>{item}</option>)}
         </select>
         <button type="button" onClick={() => shiftMonth(1)} aria-label="Mes siguiente">{">"}</button>
-        <button type="button" className="today-mini" onClick={() => onChange(toDateInputValue(new Date()))}>Hoy</button>
+        <button type="button" className="today-mini" onClick={() => onChange(officialToday)}>Hoy</button>
       </div>
       <div className="mini-calendar-grid">
         {["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"].map(day => <span className="mini-weekday" key={day}>{day}</span>)}
@@ -1272,6 +1330,7 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   const [showForm, setShowForm] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
 
   async function refresh() {
     try {
@@ -1287,6 +1346,9 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   useEffect(() => { selectedId ? getPatient(selectedId).then(setDetail) : setDetail(null); }, [selectedId]);
   useEffect(() => { if (openNewKey) setShowForm(true); }, [openNewKey]);
 
+  const visiblePatients = patients.filter(patient => showInactive || patient.status !== "baja");
+  const inactiveCount = patients.filter(patient => patient.status === "baja").length;
+
   if (selectedId && detail) return <PatientChart patient={detail} profile={profile} notice={patientNotice} onBack={() => { setPatientNotice(""); onClose(); }} />;
 
   return (
@@ -1299,13 +1361,16 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
       }} />}
       <div className="patient-list-toolbar">
         <input className="search" placeholder="Nombre, documento o telefono" value={query} onChange={e => setQuery(e.target.value)} />
+        <button type="button" className={showInactive ? "secondary-action active-filter" : "secondary-action"} onClick={() => setShowInactive(value => !value)}>
+          {showInactive ? "Ocultar dados de baja" : `Ver dados de baja (${inactiveCount})`}
+        </button>
       </div>
       {loadError && <p className="error">No se pudieron cargar los pacientes: {loadError}</p>}
       <div className="list patient-list">
-        {patients.map(p => (
+        {visiblePatients.map(p => (
           <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} />
         ))}
-        {!loadError && patients.length === 0 && <p className="empty-day">No hay pacientes cargados.</p>}
+        {!loadError && visiblePatients.length === 0 && <p className="empty-day">{patients.length ? "No hay pacientes activos en esta vista." : "No hay pacientes cargados."}</p>}
       </div>
     </Page>
   );
@@ -1322,12 +1387,12 @@ function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () =
         <button className="patient-identity" onClick={onOpen}>
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
           <span>
-            <strong>{patient.last_name}, {patient.first_name}</strong>
+            <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>}</strong>
             <small>{formatPatientDocument(patient)} · {patient.insurance_plans?.name || "Sin obra social"} · {patientConsultorios(patient)}</small>
           </span>
         </button>
         <div className="patient-quick-data">
-          <span>Afiliado {patient.affiliate_number || "-"}</span>
+          <span>{patient.insurance_plans?.name || "Sin obra social"}</span>
           <span>{lastVisit.date}</span>
           <span>{lastVisit.reason}</span>
         </div>
@@ -2538,10 +2603,11 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
 
   return (
     <form className={embedded ? "attach-form embedded-attach-form" : "panel attach-form"} onSubmit={submit}>
-      <h2>Adjuntar estudio o archivo recibido</h2>
+      <h2>Elegir cómo guardar el documento</h2>
+      <p className="attach-mode-help">Vinculá un archivo que ya está en Google Drive o subí una copia desde este dispositivo.</p>
       <div className="segmented">
-        <button type="button" className={mode === "drive" ? "active" : ""} onClick={() => setMode("drive")}>Google Drive</button>
-        <button type="button" className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Subir copia</button>
+        <button type="button" className={mode === "drive" ? "active" : ""} onClick={() => setMode("drive")}>Vincular desde Drive</button>
+        <button type="button" className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Subir archivo</button>
       </div>
       <div className="form-grid">
         {mode === "drive" ? (
@@ -3235,6 +3301,8 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
 
   async function toggleActive() {
     if (user.is_master) return;
+    const action = user.active ? "bloquear" : "reactivar";
+    if (!window.confirm(`${action === "bloquear" ? "Bloquear" : "Reactivar"} el acceso de ${user.full_name}?`)) return;
     setChangingStatus(true);
     setResetStatus("");
     try {
@@ -3263,7 +3331,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
           {user.is_master ? <span className="badge master">Maestro</span> : (
             <label className="status-switch">
               <input type="checkbox" checked={user.active} disabled={changingStatus} onChange={() => void toggleActive()} />
-              <span>{changingStatus ? "Guardando..." : user.active ? "Activo" : "Inactivo"}</span>
+              <span>{changingStatus ? "Guardando..." : user.active ? "Activo" : "Bloqueado"}</span>
             </label>
           )}
           {!user.is_master && <button type="button" className="secondary-action" onClick={() => setEditing(true)}>Editar</button>}

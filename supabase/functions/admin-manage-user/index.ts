@@ -1,5 +1,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+type ManagedRole = "MEDICA_ADMIN" | "SECRETARIA";
+
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function normalizedDocument(value: unknown) {
+  return text(value).replace(/\D/g, "");
+}
+
+function json(body: unknown, headers: Record<string, string>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...headers, "Content-Type": "application/json" }
+  });
+}
+
 Deno.serve(async request => {
   const configuredOrigins = (Deno.env.get("CORS_ORIGIN") || "https://cardioayala.vercel.app,http://localhost:5173,http://127.0.0.1:5174")
     .split(",")
@@ -22,22 +39,31 @@ Deno.serve(async request => {
 
     const authHeader = request.headers.get("Authorization") || "";
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
     const { data: authData, error: authError } = await userClient.auth.getUser();
     if (authError || !authData.user) throw new Error("Sesion invalida.");
 
-    const { data: requester } = await adminClient.from("profiles").select("id, role, active, is_master").eq("id", authData.user.id).single();
-    if (!requester?.active || requester.role !== "MEDICA_ADMIN") throw new Error("Solo una medica/admin puede administrar accesos.");
+    const { data: requester, error: requesterError } = await adminClient
+      .from("profiles")
+      .select("id, role, active, is_master")
+      .eq("id", authData.user.id)
+      .single();
+    if (requesterError || !requester?.active || requester.role !== "MEDICA_ADMIN") {
+      throw new Error("Solo una medica/admin activa puede administrar accesos.");
+    }
 
     const body = await request.json();
+    const action = text(body.action);
 
-    if (body.action === "create_user") {
-      const email = String(body.email || "").trim().toLowerCase();
+    if (action === "create_user") {
+      const email = text(body.email).toLowerCase();
       const password = String(body.password || "");
-      const fullName = String(body.full_name || "").trim();
-      const role = body.role === "MEDICA_ADMIN" ? "MEDICA_ADMIN" : "SECRETARIA";
-      const locationId = role === "SECRETARIA" ? String(body.location_id || "") || null : null;
-      const documentNumber = String(body.document_number || "").replace(/\D/g, "");
+      const fullName = text(body.full_name);
+      const role: ManagedRole = body.role === "MEDICA_ADMIN" ? "MEDICA_ADMIN" : "SECRETARIA";
+      const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
+      const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");
       if (password.length < 8) throw new Error("La contrasena inicial debe tener al menos 8 caracteres.");
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
@@ -68,45 +94,143 @@ Deno.serve(async request => {
         .select("*, location:locations(*)")
         .single();
       if (profileError) {
+        await adminClient.from("profiles").delete().eq("id", created.user.id);
         await adminClient.auth.admin.deleteUser(created.user.id);
         throw profileError;
       }
-
-      return new Response(JSON.stringify({ profile }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+      return json({ profile }, corsHeaders);
     }
 
-    if (body.action !== "reset_password") throw new Error("Accion no valida.");
-
-    const targetId = String(body.user_id || "");
+    const targetId = text(body.user_id);
+    if (!targetId) throw new Error("Falta identificar el usuario.");
     const { data: target, error: targetError } = await adminClient
       .from("profiles")
-      .select("id, full_name, document_number, is_master")
+      .select("id, email, full_name, role, location_id, active, document_number, is_master")
       .eq("id", targetId)
       .single();
     if (targetError || !target) throw new Error("Usuario no encontrado.");
-    if (target.is_master && requester.id !== target.id) throw new Error("El acceso del usuario maestro esta protegido.");
 
-    const temporaryPassword = String(target.document_number || "").replace(/\D/g, "");
-    if (temporaryPassword.length < 6) throw new Error("Carga el DNI del usuario antes de blanquear su contrasena.");
+    if (action === "reset_password") {
+      const temporaryPassword = normalizedDocument(target.document_number);
+      if (temporaryPassword.length < 6) throw new Error("Carga el DNI del usuario antes de blanquear su contrasena.");
+      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(target.id, {
+        password: temporaryPassword
+      });
+      if (updateAuthError) throw updateAuthError;
+      const { error: updateProfileError } = await adminClient
+        .from("profiles")
+        .update({ must_change_password: true })
+        .eq("id", target.id);
+      if (updateProfileError) throw updateProfileError;
+      return json({ temporary_password: temporaryPassword }, corsHeaders);
+    }
 
-    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(target.id, { password: temporaryPassword });
-    if (updateAuthError) throw updateAuthError;
+    if (action === "set_active") {
+      const active = body.active === true;
+      if (target.is_master) throw new Error("El usuario Maestro no puede bloquearse ni desactivarse.");
+      if (!active && target.id === requester.id) throw new Error("No podes bloquear tu propio acceso.");
 
-    const { error: updateProfileError } = await adminClient
-      .from("profiles")
-      .update({ must_change_password: true })
-      .eq("id", target.id);
-    if (updateProfileError) throw updateProfileError;
+      if (!active && target.role === "MEDICA_ADMIN") {
+        const { count, error: countError } = await adminClient
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "MEDICA_ADMIN")
+          .eq("active", true)
+          .neq("id", target.id);
+        if (countError) throw countError;
+        if (!count) throw new Error("Debe quedar al menos una medica/admin activa.");
+      }
+      if (active && target.role === "SECRETARIA" && !target.location_id) {
+        throw new Error("Asigna un consultorio antes de reactivar a la secretaria.");
+      }
 
-    return new Response(JSON.stringify({ temporary_password: temporaryPassword }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
+      if (!active) {
+        const { error: banError } = await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "876000h" });
+        if (banError) throw banError;
+        const { data: profile, error: profileError } = await adminClient
+          .from("profiles")
+          .update({ active: false })
+          .eq("id", target.id)
+          .select("*, location:locations(*)")
+          .single();
+        if (profileError) {
+          await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none" });
+          throw profileError;
+        }
+        return json({ profile }, corsHeaders);
+      }
+
+      const { data: profile, error: profileError } = await adminClient
+        .from("profiles")
+        .update({ active: true })
+        .eq("id", target.id)
+        .select("*, location:locations(*)")
+        .single();
+      if (profileError) throw profileError;
+      const { error: unbanError } = await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none" });
+      if (unbanError) {
+        await adminClient.from("profiles").update({ active: false }).eq("id", target.id);
+        throw unbanError;
+      }
+      return json({ profile }, corsHeaders);
+    }
+
+    if (action === "update_user") {
+      if (target.is_master) throw new Error("Los datos y privilegios del usuario Maestro estan protegidos.");
+      const email = text(body.email).toLowerCase();
+      const fullName = text(body.full_name);
+      const role: ManagedRole = body.role === "MEDICA_ADMIN" ? "MEDICA_ADMIN" : "SECRETARIA";
+      const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
+      const documentNumber = normalizedDocument(body.document_number);
+      if (!email.includes("@")) throw new Error("Ingresa un email valido.");
+      if (!fullName) throw new Error("Ingresa el nombre del usuario.");
+      if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
+      if (role === "SECRETARIA" && target.active && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+
+      if (target.role === "MEDICA_ADMIN" && role !== "MEDICA_ADMIN" && target.active) {
+        const { count, error: countError } = await adminClient
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "MEDICA_ADMIN")
+          .eq("active", true)
+          .neq("id", target.id);
+        if (countError) throw countError;
+        if (!count) throw new Error("Debe quedar al menos una medica/admin activa.");
+      }
+
+      const authPatch: Record<string, unknown> = { user_metadata: { full_name: fullName } };
+      if (email !== target.email.toLowerCase()) {
+        authPatch.email = email;
+        authPatch.email_confirm = true;
+      }
+      const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(target.id, authPatch);
+      if (authUpdateError) throw authUpdateError;
+
+      const { data: profile, error: profileError } = await adminClient
+        .from("profiles")
+        .update({
+          email,
+          full_name: fullName,
+          role,
+          location_id: locationId,
+          document_number: documentNumber
+        })
+        .eq("id", target.id)
+        .select("*, location:locations(*)")
+        .single();
+      if (profileError) {
+        await adminClient.auth.admin.updateUserById(target.id, {
+          email: target.email,
+          email_confirm: true,
+          user_metadata: { full_name: target.full_name }
+        });
+        throw profileError;
+      }
+      return json({ profile }, corsHeaders);
+    }
+
+    throw new Error("Accion no valida.");
   } catch (error) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "No se pudo administrar el usuario." }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
+    return json({ error: error instanceof Error ? error.message : "No se pudo administrar el usuario." }, corsHeaders, 400);
   }
 });

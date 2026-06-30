@@ -400,6 +400,8 @@ h1 { font-size: 28px; margin-bottom: 4px; }
   max-height: calc(100vh - 68px);
   overflow-y: auto;
   border-radius: 10px;
+  background: white;
+  padding: 18px;
   box-shadow: 0 24px 70px rgba(0,0,0,0.32);
 }
 
@@ -701,6 +703,19 @@ h1 { font-size: 28px; margin-bottom: 4px; }
   color: #60717a;
   font-weight: 800;
 }
+.remember-session {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  color: #43545c;
+  font-size: 13px;
+}
+.remember-session input {
+  width: 17px;
+  min-height: 17px;
+  margin: 0;
+}
 label { display: grid; gap: 6px; color: #55646c; font-weight: 700; }
 input, select, textarea {
   width: 100%;
@@ -784,6 +799,10 @@ input, select, textarea {
 .attach-form {
   margin-bottom: 16px;
 }
+.attach-mode-help {
+  margin: -4px 0 12px;
+  color: #66747c;
+}
 .embedded-attach-form {
   margin: 0;
   padding-top: 14px;
@@ -793,11 +812,17 @@ input, select, textarea {
   font-size: 18px;
 }
 .document-modal-head {
+  position: sticky;
+  top: -18px;
+  z-index: 3;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 14px;
+  margin: -18px -18px 14px;
+  padding: 18px;
+  border-bottom: 1px solid #dce4e8;
+  background: white;
 }
 .document-modal-head h2,
 .document-modal-head p {
@@ -1256,9 +1281,29 @@ input, select, textarea {
   border-color: #d7dee1;
 }
 
+.patient-card.is-inactive {
+  border-left: 5px solid #b44c43;
+}
+
 .patient-card.is-inactive .patient-identity,
 .user-card.is-inactive .user-card-identity {
   opacity: .7;
+}
+
+.inactive-patient-badge {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #f9ded9;
+  color: #92372f;
+  font-size: 11px;
+  font-style: normal;
+  vertical-align: middle;
+}
+
+.active-filter {
+  box-shadow: inset 0 0 0 2px #176f78;
 }
 
 .status-switch {
@@ -1537,13 +1582,21 @@ input, select, textarea {
   flex-wrap: wrap;
 }
 
-.consultorio-strip span {
+.consultorio-strip span,
+.consultorio-strip button {
   border: 1px solid #9fd8ce;
   border-radius: 999px;
   padding: 7px 10px;
   background: #e8f8f4;
   color: #075b4c;
   text-transform: none;
+  font-weight: 800;
+}
+
+.consultorio-strip button.active {
+  border-color: #176f78;
+  background: #176f78;
+  color: white;
 }
 
 .availability-strip {
@@ -2460,6 +2513,12 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   height: 10px;
   border-radius: 50%;
   background: #6ac6b5;
+}
+
+.public-calendar-loading {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .public-slot-grid {

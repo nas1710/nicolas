@@ -7,12 +7,41 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY");
 }
 
+const rememberSessionKey = "seguimiento-pacientes-remember-session";
+
+export function getRememberSessionPreference() {
+  return window.localStorage.getItem(rememberSessionKey) !== "false";
+}
+
+export function setRememberSessionPreference(remember: boolean) {
+  window.localStorage.setItem(rememberSessionKey, String(remember));
+}
+
+const authStorage = {
+  getItem(key: string) {
+    return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+  },
+  setItem(key: string, value: string) {
+    if (getRememberSessionPreference()) {
+      window.localStorage.setItem(key, value);
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, value);
+      window.localStorage.removeItem(key);
+    }
+  },
+  removeItem(key: string) {
+    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
+  }
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storage: window.sessionStorage
+    storage: authStorage
   }
 });
 
@@ -73,6 +102,12 @@ export type PublicBookingSlot = {
 export type PublicBookingDate = {
   date: string;
   available_count: number;
+};
+
+export type BuenosAiresClock = {
+  now: string;
+  local_date: string;
+  timezone: "America/Argentina/Buenos_Aires";
 };
 
 export type PublicBookingInput = {
@@ -393,9 +428,11 @@ export function formatDocumentNumber(type: IdentityDocumentType, value?: string 
   return normalized;
 }
 
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string, remember = true) {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !password) throw new Error("Escribi el email y la contrasena.");
+
+  setRememberSessionPreference(remember);
 
   const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
   if (error) throw new Error(authErrorMessage(error));
@@ -717,6 +754,12 @@ export async function listPublicBookingDoctors() {
   return (data || []) as PublicBookingDoctor[];
 }
 
+export async function getBuenosAiresClock() {
+  const { data, error } = await supabase.rpc("current_buenos_aires_clock");
+  throwIfError(error);
+  return data as BuenosAiresClock;
+}
+
 export async function listPublicBookingSlots(doctorId: string, date: string, durationMin: number) {
   const { data, error } = await supabase.rpc("public_booking_slots", {
     p_doctor_id: doctorId,
@@ -1007,56 +1050,59 @@ export async function createProfile(input: ProfileInput) {
 }
 
 export async function createUserWithLogin(input: NewUserInput) {
-  const { data, error } = await supabase.functions.invoke("admin-manage-user", {
-    body: {
-      action: "create_user",
-      email: input.email.trim().toLowerCase(),
-      password: input.password,
-      full_name: formatProperName(input.full_name),
-      role: input.role,
-      location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
-      document_number: input.document_number?.replace(/\D/g, "") || null
-    }
+  const data = await invokeUserAdministration({
+    action: "create_user",
+    email: input.email.trim().toLowerCase(),
+    password: input.password,
+    full_name: formatProperName(input.full_name),
+    role: input.role,
+    location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
+    document_number: input.document_number?.replace(/\D/g, "") || null
   });
-  if (error) throw new Error("No se pudo crear el acceso. Verifica que la funcion admin-manage-user este publicada en Supabase.");
-  if (data?.error) throw new Error(data.error);
   return data.profile as Profile;
 }
 
+async function invokeUserAdministration(body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("admin-manage-user", {
+    body: {
+      ...body
+    }
+  });
+  if (error) {
+    const context = "context" in error ? error.context : null;
+    if (context instanceof Response) {
+      try {
+        const detail = await context.clone().json() as { error?: string };
+        if (detail.error) throw new Error(detail.error);
+      } catch (detailError) {
+        if (detailError instanceof Error && detailError.message !== "Unexpected end of JSON input") throw detailError;
+      }
+    }
+    throw new Error("No se pudo comunicar con la administracion segura de usuarios.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 export async function updateProfile(id: string, input: Omit<ProfileInput, "id">) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .update({
-      email: input.email.trim(),
-      full_name: formatProperName(input.full_name),
-      role: input.role,
-      location_id: input.role === "SECRETARIA" ? input.location_id : null,
-      active: input.active,
-      document_number: input.document_number?.replace(/\D/g, "") || null
-    })
-    .eq("id", id)
-    .select("*, location:locations(*)")
-    .single();
-  throwIfError(error);
-  return data as Profile;
+  const data = await invokeUserAdministration({
+    action: "update_user",
+    user_id: id,
+    email: input.email.trim().toLowerCase(),
+    full_name: formatProperName(input.full_name),
+    role: input.role,
+    location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
+    document_number: input.document_number?.replace(/\D/g, "") || null
+  });
+  return data.profile as Profile;
 }
 
 export async function setProfileActive(id: string, active: boolean) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .update({ active })
-    .eq("id", id)
-    .select("*, location:locations(*)")
-    .single();
-  throwIfError(error);
-  return data as Profile;
+  const data = await invokeUserAdministration({ action: "set_active", user_id: id, active });
+  return data.profile as Profile;
 }
 
 export async function resetUserPasswordToDocument(userId: string) {
-  const { data, error } = await supabase.functions.invoke("admin-manage-user", {
-    body: { action: "reset_password", user_id: userId }
-  });
-  if (error) throw new Error("No se pudo ejecutar el blanqueo seguro. Verifica que la funcion admin-manage-user este publicada en Supabase.");
-  if (data?.error) throw new Error(data.error);
+  const data = await invokeUserAdministration({ action: "reset_password", user_id: userId });
   return data as { temporary_password: string };
 }

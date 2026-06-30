@@ -348,6 +348,22 @@ $$;
 
 grant execute on function public.complete_password_change() to authenticated;
 
+create or replace function public.current_buenos_aires_clock()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'now', now(),
+    'local_date', to_char(now() at time zone 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD'),
+    'timezone', 'America/Argentina/Buenos_Aires'
+  );
+$$;
+
+grant execute on function public.current_buenos_aires_clock() to anon, authenticated;
+
 create or replace function public.protect_master_profile()
 returns trigger
 language plpgsql

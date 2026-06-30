@@ -46,10 +46,11 @@ La anon key de Supabase es publica, pero no debe usarse service role key en fron
    - Project URL
    - anon public key
 4. Ir a SQL Editor.
-5. Ejecutar completo:
+5. Para una base nueva, ejecutar completos y en este orden:
 
 ```text
 supabase/schema.sql
+supabase/public_booking.sql
 ```
 
 En **Authentication > URL Configuration**, configurar la URL publicada como
@@ -57,38 +58,19 @@ En **Authentication > URL Configuration**, configurar la URL publicada como
 `Redirect URLs`. Esto permite que los correos de confirmacion y recuperacion
 vuelvan a la pantalla de nueva contrasena de la app.
 
-Si el primer intento fallo y Supabase quedo con tablas creadas a medias, ejecutar primero:
+Para la base que ya esta publicada, usar la ruta consolidada:
 
 ```text
-supabase/reset_for_retry.sql
+supabase/01_consolidar_base_actual.sql
+supabase/public_booking.sql
 ```
 
-Despues volver a ejecutar completo:
+El orden completo y el inventario estan en `supabase/README_MIGRACIONES.md`.
+Los parches anteriores se conservan como historial y no deben ejecutarse todos
+en cadena sobre una base consolidada.
 
-```text
-supabase/schema.sql
-```
-
-Usar `reset_for_retry.sql` solo en una base nueva/demo, porque borra las tablas de esta app.
-
-Si ya tenes la base creada y solo queres aplicar mejoras sin borrar datos demo, ejecutar:
-
-```text
-supabase/patch_existing_db.sql
-```
-
-Para la base que ya esta publicada, ejecutar despues y en este orden:
-
-```text
-supabase/fix_authentication.sql
-supabase/patient_uniqueness.sql
-supabase/01_fix_patient_location_model.sql
-supabase/master_and_passwords.sql
-supabase/master_consultorios_holidays.sql
-```
-
-El ultimo script protege como usuario maestro a `nas1710@gmail.com`: otro
-administrador no puede cambiarle rol, consultorio, estado ni privilegios.
+La base publicada conserva protegido como usuario maestro a `nas1710@gmail.com`:
+otro administrador no puede cambiarle rol, consultorio, estado ni privilegios.
 
 Ese SQL crea:
 
@@ -106,18 +88,9 @@ Ese SQL crea:
 
 La primera medica/admin se crea una sola vez desde Supabase, porque todavia no hay nadie logueado con permisos para administrar usuarios.
 
-Si una cuenta de Auth existe pero la app no permite ingresar, ejecuta primero
-`supabase/fix_authentication.sql`. El script repara el trigger, crea perfiles
-faltantes como pendientes y al final muestra el estado de acceso de cada cuenta.
-
-Para habilitar pacientes unicos por tipo y numero de documento vinculados a varios consultorios, ejecutar
-una vez `supabase/patient_uniqueness.sql`. La migracion conserva los pacientes y
-vincula automaticamente cada registro actual con su consultorio original. Admite
-DNI, LC, LE, pasaporte, cedula de identidad y documento extranjero.
-
-Ejecutar despues `supabase/01_fix_patient_location_model.sql`: conserva la columna
-heredada `patients.location_id`, migra sus vinculos y deja `patient_locations`
-como unica relacion vigente entre pacientes y consultorios.
+La ruta oficial ya incluye pacientes unicos por tipo y numero de documento y
+deja `patient_locations` como unica relacion vigente entre pacientes y
+consultorios. No ejecutar parches historicos sobre una base consolidada.
 
 En Supabase:
 
@@ -225,17 +198,17 @@ reemplazarla en el siguiente ingreso.
 Publicar la funcion segura desde una terminal con Supabase CLI:
 
 ```bash
-supabase login
-supabase link --project-ref TU_PROJECT_REF
-supabase functions deploy admin-manage-user
-supabase secrets set "CORS_ORIGIN=https://cardioayala.vercel.app,http://localhost:5173"
+npx --yes supabase@latest login
+npx --yes supabase@latest functions deploy admin-manage-user --project-ref TU_PROJECT_REF
+npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.app,http://localhost:5173" --project-ref TU_PROJECT_REF
 ```
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` son provistas
 automaticamente por Supabase dentro de la Edge Function. La service role nunca
 se copia al frontend ni a Vercel.
 
-Antes de crear o blanquear usuarios, ejecutar `supabase/master_and_passwords.sql`.
+Antes de usar la administracion de usuarios, ejecutar la ruta oficial indicada
+en `supabase/README_MIGRACIONES.md` y desplegar la Edge Function.
 
 ## Deploy en Vercel Hobby Free
 
@@ -292,11 +265,10 @@ La pagina publica queda disponible en:
 https://cardioayala.vercel.app/turnos
 ```
 
-Antes de publicar el frontend, ejecutar en Supabase SQL Editor y en este orden:
+En una base nueva, ejecutar en Supabase SQL Editor y en este orden:
 
 ```text
-supabase/patient_uniqueness.sql
-supabase/01_fix_patient_location_model.sql
+supabase/schema.sql
 supabase/public_booking.sql
 ```
 
