@@ -87,7 +87,7 @@ import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
 import { canAccessClinical, canManageConfiguration, canManageUsers, roleLabel } from "./utils/permissions";
 import "./styles.css";
 
-type View = "inicio" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios";
+type View = "inicio" | "reportes" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios";
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
@@ -230,7 +230,8 @@ function App() {
         </div>}
       </aside>
       <main>
-        {view === "inicio" && <OperationalDashboard key={`inicio-${viewResetKey}`} profile={profile} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={profile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={profile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={profile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
@@ -242,7 +243,7 @@ function App() {
   );
 }
 
-function Dashboard({ onNavigate, onNewPatient, onOpenPatient }: { onNavigate: (view: View) => void; onNewPatient: () => void; onOpenPatient: (id: string) => void }) {
+function Dashboard({ onNavigate, onReports, onNewPatient, onOpenPatient }: { onNavigate: (view: View) => void; onReports: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -279,6 +280,7 @@ function Dashboard({ onNavigate, onNewPatient, onOpenPatient }: { onNavigate: (v
       subtitle="Vista de trabajo para consultorio"
       actions={
         <>
+          <button className="secondary-action" onClick={onReports}>Reportes y estadisticas</button>
           <button className="secondary-action" onClick={() => onNavigate("agenda")}>Ver agenda</button>
           <button className="primary" onClick={onNewPatient}>+ Nuevo paciente</button>
         </>

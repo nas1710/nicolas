@@ -3,9 +3,9 @@ import { DashboardFilters, DashboardMetric, DashboardReport, getDashboardReport,
 import { Page } from "../../components/ui";
 import { CommunicationAlerts } from "../communications/CommunicationCenter";
 
-type Props = { profile: Profile; onAgenda: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void };
+type Props = { profile: Profile; onBack: () => void; onAgenda: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void };
 
-export function OperationalDashboard({ profile, onAgenda, onNewPatient, onOpenPatient }: Props) {
+export function OperationalDashboard({ profile, onBack, onAgenda, onNewPatient, onOpenPatient }: Props) {
   const initial = useMemo(() => defaultRange(), []);
   const [filters, setFilters] = useState<DashboardFilters>(initial);
   const [report, setReport] = useState<DashboardReport | null>(null);
@@ -22,7 +22,7 @@ export function OperationalDashboard({ profile, onAgenda, onNewPatient, onOpenPa
 
   const title = profile.is_master || profile.role === "ADMINISTRADOR" ? "Dashboard general" : profile.role === "SECRETARIA" ? "Panel operativo" : "Mi actividad";
   const practices = report?.options.practices.filter(item => !filters.specialty_id || item.specialty_id === filters.specialty_id) || [];
-  return <Page title={title} subtitle="Turnos, pacientes y ocupacion con datos reales" actions={<><button onClick={onAgenda}>Ver agenda</button><button className="primary" onClick={onNewPatient}>+ Nuevo paciente</button></>}>
+  return <Page title={title} subtitle="Reportes y estadisticas" actions={<><button onClick={onBack}>Volver al inicio</button><button onClick={onAgenda}>Ver agenda</button><button className="primary" onClick={onNewPatient}>+ Nuevo paciente</button></>}>
     <section className="report-filters" aria-label="Filtros del dashboard">
       <label>Desde<input type="date" value={filters.from} onChange={e => setFilters({ ...filters, from:e.target.value })}/></label>
       <label>Hasta<input type="date" value={filters.to} onChange={e => setFilters({ ...filters, to:e.target.value })}/></label>
