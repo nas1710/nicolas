@@ -1933,8 +1933,7 @@ function buildMailto(to: string, subject: string, body: string) {
 
 function attachmentLabel(attachment: Attachment) {
   const kind = attachment.kind.replace(/_/g, " ").toLowerCase();
-  const origin = attachment.origin.replace(/_/g, " ").toLowerCase();
-  return `${kind} - ${origin}`;
+  return kind;
 }
 
 function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved: () => Promise<void> }) {
@@ -2009,7 +2008,6 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
   const [file, setFile] = useState<File | null>(null);
   const [driveUrl, setDriveUrl] = useState("");
   const [driveFileName, setDriveFileName] = useState("");
-  const [origin, setOrigin] = useState<Attachment["origin"]>("PACIENTE");
   const [kind, setKind] = useState<Attachment["kind"]>("ESTUDIO_PREVIO");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2024,9 +2022,9 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
     setError("");
     try {
       if (mode === "upload" && file) {
-        await uploadPatientAttachment({ patientId: patient.id, file, origin, kind, description });
+        await uploadPatientAttachment({ patientId: patient.id, file, origin: "MEDICA", kind, description });
       } else {
-        await linkDriveAttachment({ patientId: patient.id, fileName: driveFileName, driveUrl, origin, kind, description });
+        await linkDriveAttachment({ patientId: patient.id, fileName: driveFileName, driveUrl, origin: "MEDICA", kind, description });
       }
       setFile(null);
       setDriveUrl("");
@@ -2057,15 +2055,6 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
         ) : (
           <label>Archivo<input type="file" accept=".pdf,image/*,video/*" onChange={e => setFile(e.target.files?.[0] || null)} /></label>
         )}
-        <label>Origen
-          <select value={origin} onChange={e => setOrigin(e.target.value as Attachment["origin"])}>
-            <option value="PACIENTE">Traido/enviado por paciente</option>
-            <option value="MEDICA">Realizado por la medica</option>
-            <option value="CARDIOVEX">Cardiovex</option>
-            <option value="ECCOSUR">Eccosur</option>
-            <option value="OTRO">Otro</option>
-          </select>
-        </label>
         <label>Tipo
           <select value={kind} onChange={e => setKind(e.target.value as Attachment["kind"])}>
             <option value="ESTUDIO_PREVIO">Estudio previo</option>
@@ -2099,7 +2088,7 @@ function AttachmentCard({ attachment }: { attachment: Attachment }) {
   return (
     <div className="card">
       <strong>{attachment.file_name}</strong>
-      <span>{attachment.kind} - {attachment.origin} - {attachment.storage_provider === "GOOGLE_DRIVE" ? "Google Drive" : "Archivo subido"} - {new Date(attachment.created_at).toLocaleDateString()}</span>
+      <span>{attachment.kind.replace(/_/g, " ")} - {attachment.storage_provider === "GOOGLE_DRIVE" ? "Google Drive" : "Archivo subido"} - {new Date(attachment.created_at).toLocaleDateString()}</span>
       {attachment.description && <p>{attachment.description}</p>}
       {attachment.storage_provider === "GOOGLE_DRIVE" && attachment.external_url && <a className="link" href={attachment.external_url} target="_blank" rel="noreferrer">Abrir en Drive</a>}
       {attachment.storage_provider === "SUPABASE" && attachment.storage_path && <button onClick={() => createSignedAttachmentUrl(attachment.storage_path!).then(setUrl)}>Abrir por 10 min</button>}
@@ -2163,14 +2152,14 @@ function Studies({ onOpenPatient }: { onOpenPatient: (id: string) => void }) {
       )}
 
       {tab === "documentos" && (
-        attachments.length ? <Table headers={["Fecha", "Paciente", "Archivo", "Guardado en", "Origen"]}>
+        attachments.length ? <Table headers={["Fecha", "Paciente", "Archivo", "Tipo", "Guardado en"]}>
           {attachments.map(attachment => (
             <tr key={attachment.id}>
               <td>{new Date(attachment.created_at).toLocaleDateString()}</td>
               <td><button className="link" onClick={() => onOpenPatient(attachment.patient_id)}>{attachment.patients?.last_name}, {attachment.patients?.first_name}</button></td>
               <td>{attachment.file_name}</td>
+              <td>{attachment.kind.replace(/_/g, " ")}</td>
               <td>{attachment.storage_provider === "GOOGLE_DRIVE" ? "Google Drive" : "Copia segura en la nube"}</td>
-              <td>{attachment.origin}</td>
             </tr>
           ))}
         </Table> : <div className="document-empty-state">
