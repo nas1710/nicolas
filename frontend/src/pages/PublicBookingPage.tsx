@@ -33,6 +33,7 @@ export function PublicBookingPage() {
   const [calendarMonth, setCalendarMonth] = useState(today.slice(0, 7));
   const [availableDates, setAvailableDates] = useState<PublicBookingDate[]>([]);
   const [loadingDates, setLoadingDates] = useState(false);
+  const [searchingFirstDate, setSearchingFirstDate] = useState(false);
   const [slots, setSlots] = useState<PublicBookingSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<PublicBookingSlot | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -53,6 +54,22 @@ export function PublicBookingPage() {
   const visibleDoctors = catalog.professionals.filter(doctor => !specialtyId || doctor.specialty_ids.includes(specialtyId));
   const visiblePractices = catalog.practices.filter(practice => (!specialtyId || practice.specialty_id === specialtyId) && (!doctorId || catalog.professionals.find(item => item.id === doctorId)?.practice_ids.includes(practice.id)));
   const duration = practiceIds.reduce((total, id) => total + (catalog.practices.find(item => item.id === id)?.duration_min || 0), 0);
+
+  useEffect(() => {
+    if (!doctorId || practiceIds.length === 0 || duration <= 0) return;
+    let cancelled = false;
+    setSearchingFirstDate(true);
+    setError("");
+    listPublicBookingDates(doctorId, today, toDateInputValue(maxDateValue), duration)
+      .then(items => {
+        if (cancelled || !items[0]) return;
+        setCalendarMonth(items[0].date.slice(0, 7));
+        setDate(items[0].date);
+      })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo buscar la primera fecha disponible."); })
+      .finally(() => { if (!cancelled) setSearchingFirstDate(false); });
+    return () => { cancelled = true; };
+  }, [doctorId, duration]);
 
   useEffect(() => {
     Promise.all([getPublicCommercialCatalog(), listPublicBookingInsurancePlans()])
@@ -183,13 +200,13 @@ export function PublicBookingPage() {
                 {!loadingCatalog && visibleDoctors.length === 0 && <p className="notice">Todavia no hay profesionales publicados para esta especialidad.</p>}
               </div>
             )}
-            <fieldset className="public-practice-picker"><legend>Prácticas disponibles</legend>{visiblePractices.map(practice => <label key={practice.id} className={practiceIds.includes(practice.id) ? "selected" : ""}><input type="checkbox" checked={practiceIds.includes(practice.id)} onChange={() => { setPracticeIds(current => current.includes(practice.id) ? current.filter(id => id !== practice.id) : [...current, practice.id]); setSelectedSlot(null); }} /><span><strong>{practice.name}</strong><small>{practice.duration_min} min</small></span></label>)}{doctorId && !visiblePractices.length && <p>No hay prácticas publicadas para este profesional.</p>}</fieldset>
+            <fieldset className="public-practice-picker"><legend>Prácticas disponibles</legend>{visiblePractices.map(practice => <label key={practice.id} className={`practice-tone-${practiceTone(practice.id)} ${practiceIds.includes(practice.id) ? "selected" : ""}`}><input type="checkbox" checked={practiceIds.includes(practice.id)} onChange={() => { setPracticeIds(current => current.includes(practice.id) ? current.filter(id => id !== practice.id) : [...current, practice.id]); setSelectedSlot(null); }} /><span><strong>{practice.name}</strong><small>{practice.duration_min} min</small></span></label>)}{doctorId && !visiblePractices.length && <p>No hay prácticas publicadas para este profesional.</p>}</fieldset>
             <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
             <div className="public-date-time-picker">
               <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={toDateInputValue(maxDateValue)} onMonthChange={setCalendarMonth} onSelect={setDate} />
               <div className="public-times-panel">
                 <strong>Horarios del {new Date(`${date}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}</strong>
-                {loadingDates && <p className="public-calendar-loading" role="status">Cargando fechas disponibles...</p>}
+                {(loadingDates || searchingFirstDate) && <p className="public-calendar-loading" role="status">Buscando la primera fecha disponible...</p>}
                 <div className="public-slot-grid">
               {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
               {!loadingSlots && doctorId && slots.map(slot => {
@@ -270,4 +287,8 @@ function calendarMonthBounds(month: string, minDate: string, maxDate: string) {
   const first = firstOfMonth < minDate ? minDate : firstOfMonth;
   const last = lastOfMonth > maxDate ? maxDate : lastOfMonth;
   return first <= last ? { first, last } : { first: "", last: "" };
+}
+
+function practiceTone(id: string) {
+  return Array.from(id).reduce((total, character) => total + character.charCodeAt(0), 0) % 6;
 }
