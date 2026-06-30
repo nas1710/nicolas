@@ -388,7 +388,7 @@ function authErrorMessage(error: { message: string; code?: string } | null) {
     case "invalid_credentials":
       return "Email o contrasena incorrectos.";
     case "email_not_confirmed":
-      return "Primero confirma tu email desde el mensaje enviado por Supabase.";
+      return "La cuenta todavia no fue habilitada. Pedi al Master que la active desde Usuarios.";
     case "user_banned":
       return "Este usuario esta deshabilitado. Consulta con la medica/admin.";
     case "weak_password":
@@ -494,28 +494,16 @@ export async function signIn(email: string, password: string, remember = true) {
 }
 
 export async function requestUserAccess(input: { email: string; password: string; full_name: string }) {
-  const { data, error } = await supabase.auth.signUp({
-    email: input.email.trim(),
-    password: input.password,
-    options: {
-      data: {
-        full_name: formatProperName(input.full_name),
-        requested_role: "SECRETARIA"
-      }
+  const { data, error } = await supabase.functions.invoke("request-user-access", {
+    body: {
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+      full_name: formatProperName(input.full_name),
+      website: ""
     }
   });
-  throwIfError(error);
-
-  if (data.session?.user) {
-    await supabase.from("profiles").upsert({
-      id: data.session.user.id,
-      email: input.email.trim(),
-      full_name: formatProperName(input.full_name),
-      role: "SECRETARIA",
-      location_id: null,
-      active: false
-    });
-  }
+  if (error) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
 }
 
 export async function requestPasswordReset(email: string) {

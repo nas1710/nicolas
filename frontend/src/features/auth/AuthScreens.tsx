@@ -7,7 +7,6 @@ import {
   Profile,
   requestPasswordReset,
   requestUserAccess,
-  resendConfirmationEmail,
   signIn,
   updateCurrentPassword
 } from "../../api/supabase";
@@ -20,24 +19,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState("");
-  const [resending, setResending] = useState(false);
   const [remember, setRemember] = useState(getRememberSessionPreference());
-  const needsEmailConfirmation = error.includes("confirma tu email");
-
-  async function resendConfirmation() {
-    if (!email.trim()) return setError("Escribi tu email para reenviar la activacion.");
-    setResending(true);
-    setMessage("");
-    try {
-      await resendConfirmationEmail(email);
-      setError("");
-      setMessage("Listo. Te reenviamos el correo de activacion.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo reenviar el correo.");
-    } finally {
-      setResending(false);
-    }
-  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -47,7 +29,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
       if (mode === "request") {
         if (!fullName.trim() || !email.trim() || !password.trim()) throw new Error("Nombre, email y contrasena son obligatorios.");
         await requestUserAccess({ full_name: fullName, email, password });
-        setMessage("Solicitud enviada. La medica/admin debe habilitar el usuario desde Usuarios.");
+        setMessage("Solicitud registrada sin validacion por email. El administrador debe asignar el rol, el consultorio y habilitar el acceso desde Usuarios.");
         return;
       }
       if (mode === "reset") {
@@ -75,18 +57,7 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
         {mode === "request" && <label>Nombre completo<input value={fullName} onChange={event => setFullName(event.target.value)} onBlur={() => setFullName(formatProperName(fullName))} /></label>}
         <label>Email<input value={email} onChange={event => setEmail(event.target.value)} /></label>
         {mode !== "reset" && <label>Contrasena<PasswordInput value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="current-password" /></label>}
-        {needsEmailConfirmation ? (
-          <div className="auth-alert" role="status">
-            <span className="auth-alert-mark" aria-hidden="true">!</span>
-            <div>
-              <strong>Activa tu cuenta</strong>
-              <p>Revisa tu correo y abri el enlace que te enviamos para poder ingresar.</p>
-              <button type="button" className="link" disabled={resending} onClick={() => void resendConfirmation()}>
-                {resending ? "Reenviando..." : "Reenviar correo"}
-              </button>
-            </div>
-          </div>
-        ) : error ? <p className="error login-error">{error}</p> : null}
+        {error ? <p className="error login-error">{error}</p> : null}
         {message && <p className="notice ok-notice">{message}</p>}
         {mode === "login" && <label className="remember-session"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />Recordarme en este dispositivo</label>}
         <button className="primary">{mode === "login" ? "Ingresar" : mode === "request" ? "Solicitar acceso" : "Enviar recuperacion"}</button>
