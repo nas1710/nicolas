@@ -176,6 +176,14 @@ una URL temporal solo al generarse y nunca publica la firma anonimamente.
 
 ## Pacientes y turnos
 
+## Dashboard y reportes
+
+El Inicio usa `dashboard_report` para mostrar métricas según el rol. Master y
+Administrador ven toda la operación; cada profesional ve sus turnos y cada
+Secretaria ve su consultorio. Incluye filtros por fechas, profesional,
+especialidad, práctica, consultorio, estado y origen, además de exportación CSV
+de los turnos visibles. Ejecutar `supabase/07_dashboard_reporting.sql`.
+
 Desde **Pacientes**:
 
 - la medica/admin puede cargar evoluciones clinicas, diagnostico, indicaciones y proximo control

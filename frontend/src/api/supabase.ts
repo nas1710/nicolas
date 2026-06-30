@@ -108,6 +108,15 @@ export type CommercialSpecialty = PublicSpecialty & { active: boolean; published
 export type CommercialPractice = PublicPractice & { active: boolean; published: boolean };
 export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[] };
 export type CommercialAdminCatalog = { specialties: CommercialSpecialty[]; practices: CommercialPractice[]; professionals: CommercialProfessional[] };
+export type DashboardMetric = { label: string; value: number };
+export type DashboardFilters = { from: string; to: string; professional_id?: string; specialty_id?: string; practice_id?: string; location_id?: string; status?: string; source?: string; validation_status?: string };
+export type DashboardReport = {
+  summary: { total: number; pending: number; confirmed: number; cancelled: number; attended: number; webAppointments: number; internalAppointments: number; newPatients: number; webPatients: number; pendingValidation: number; archivedValidation: number; capacity: number; occupancy: number };
+  byProfessional: DashboardMetric[]; byLocation: DashboardMetric[]; byPractice: DashboardMetric[]; bySpecialty: DashboardMetric[]; byHour: DashboardMetric[];
+  appointments: Array<{ id: string; starts_at: string; duration_min: number; status: string; source: string; professional_name: string; location_name: string; patient_first_name: string; patient_last_name: string }>;
+  patients: Array<{ id: string; first_name: string; last_name: string; source: string; validation_status: string; created_at: string }>;
+  options: { professionals: Array<{ id: string; name: string }>; locations: Array<{ id: string; name: string }>; specialties: Array<{ id: string; name: string }>; practices: Array<{ id: string; name: string; specialty_id: string }> };
+};
 
 export type PublicBookingSlot = {
   starts_at: string;
@@ -834,6 +843,16 @@ export async function getPublicCommercialCatalog() {
 
 export async function getCommercialAdminCatalog() {
   const { data, error } = await supabase.rpc("commercial_admin_catalog"); throwIfError(error); return data as CommercialAdminCatalog;
+}
+export async function getDashboardReport(filters: DashboardFilters) {
+  const { data, error } = await supabase.rpc("dashboard_report", {
+    p_from: filters.from, p_to: filters.to, p_professional_id: filters.professional_id || null,
+    p_specialty_id: filters.specialty_id || null, p_practice_id: filters.practice_id || null,
+    p_location_id: filters.location_id || null, p_status: filters.status || null,
+    p_source: filters.source || null, p_validation_status: filters.validation_status || null
+  });
+  throwIfError(error);
+  return data as DashboardReport;
 }
 export async function createCommercialSpecialty(input: { name: string; description?: string }) {
   const { error } = await supabase.from("specialties").insert({ name: formatProperName(input.name), description: input.description?.trim() || null }); throwIfError(error);

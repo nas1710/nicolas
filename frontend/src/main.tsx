@@ -77,6 +77,7 @@ import { UserManager } from "./features/users/UserManager";
 import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalDocumentDialog";
 import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
+import { OperationalDashboard } from "./features/dashboard/OperationalDashboard";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
 import { PublicBookingPage } from "./pages/PublicBookingPage";
 import { PublicHomePage } from "./pages/PublicHomePage";
@@ -228,7 +229,7 @@ function App() {
         </div>}
       </aside>
       <main>
-        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "inicio" && <OperationalDashboard key={`inicio-${viewResetKey}`} profile={profile} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={profile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={profile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
