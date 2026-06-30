@@ -225,7 +225,6 @@ export type PatientContactInput = {
   email?: string;
   affiliate_number?: string;
   insurance_plan_id?: string;
-  location_id?: string;
 };
 
 export type ClinicalEvolutionInput = {
@@ -482,7 +481,7 @@ export async function getCurrentProfile() {
 export async function listPatients(query = "") {
   let request = supabase
     .from("patients")
-    .select("*, insurance_plans(*), locations(*), patient_locations(location_id, locations(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
+    .select("*, insurance_plans(*), locations:locations!patients_location_id_fkey(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)), appointments(starts_at, reason, status), clinical_evolutions(occurred_at, reason)")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 
@@ -505,8 +504,8 @@ export async function getPatient(id: string) {
     .select(`
       *,
       insurance_plans(*),
-      locations(*),
-      patient_locations(location_id, locations(*)),
+      locations:locations!patients_location_id_fkey(*),
+      patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)),
       administrative_notes(*),
       clinical_evolutions(*),
       communications(*),
@@ -525,7 +524,6 @@ export async function createPatient(input: PatientInput) {
   const documentType = input.document_type || "DNI";
   const document = normalizeDocumentNumber(documentType, input.document);
   if (!document) throw new Error("El numero de documento es obligatorio para evitar pacientes duplicados.");
-  if (!input.location_id) throw new Error("Elegir el consultorio para vincular al paciente.");
 
   const { data, error } = await supabase.rpc("register_or_link_patient", {
     p_first_name: formatProperName(input.first_name),
@@ -537,7 +535,7 @@ export async function createPatient(input: PatientInput) {
     p_email: input.email?.trim() || null,
     p_affiliate_number: input.affiliate_number?.trim() || null,
     p_insurance_plan_id: input.insurance_plan_id || null,
-    p_location_id: input.location_id
+    p_location_id: input.location_id || null
   });
   if (error?.message?.includes("register_or_link_patient") && error.message.includes("schema cache")) {
     throw new Error("Supabase necesita la actualizacion de pacientes unicos. Ejecuta supabase/patient_uniqueness.sql en el SQL Editor y vuelve a intentar.");
@@ -556,20 +554,13 @@ export async function updatePatientContact(id: string, input: PatientContactInpu
       phone: input.phone?.trim() || null,
       email: input.email?.trim() || null,
       affiliate_number: input.affiliate_number?.trim() || null,
-      insurance_plan_id: input.insurance_plan_id || null,
-      location_id: input.location_id || null
+      insurance_plan_id: input.insurance_plan_id || null
     })
     .eq("id", id)
-    .select("*, insurance_plans(*), locations(*)")
+    .select("*, insurance_plans(*), locations:locations!patients_location_id_fkey(*)")
     .single();
 
   throwIfError(error);
-  if (input.location_id) {
-    const { error: linkError } = await supabase
-      .from("patient_locations")
-      .upsert({ patient_id: id, location_id: input.location_id }, { onConflict: "patient_id,location_id" });
-    throwIfError(linkError);
-  }
   return data as Patient;
 }
 

@@ -1210,9 +1210,9 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
 
   return (
     <Page title="Pacientes" subtitle="Buscar y abrir ficha clinica" actions={<button className="primary" onClick={() => setShowForm(value => !value)}>+ Nuevo paciente</button>}>
-      {showForm && <PatientForm profile={profile} onCreated={async patient => {
+      {showForm && <PatientForm onCreated={async patient => {
         setShowForm(false);
-        setPatientNotice(patient.linked_existing ? "El paciente ya estaba registrado y fue vinculado a este consultorio. Se abrio su ficha unica." : "");
+        setPatientNotice(patient.linked_existing ? "El paciente ya estaba registrado. Se abrio su ficha unica." : "");
         await refresh();
         onSelect(patient.id);
       }} />}
@@ -1382,8 +1382,8 @@ function IdentityDocumentFields({ value, onChange }: { value: PatientInput; onCh
   </>;
 }
 
-function PatientForm({ profile, onCreated }: { profile: Profile; onCreated: (patient: Patient) => Promise<void> }) {
-  const [config, setConfig] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[] } | null>(null);
+function PatientForm({ onCreated }: { onCreated: (patient: Patient) => Promise<void> }) {
+  const [config, setConfig] = useState<{ insurancePlans: InsurancePlan[] } | null>(null);
   const [form, setForm] = useState<PatientInput>({
     first_name: "",
     last_name: "",
@@ -1393,13 +1393,12 @@ function PatientForm({ profile, onCreated }: { profile: Profile; onCreated: (pat
     phone: "",
     email: "",
     affiliate_number: "",
-    insurance_plan_id: "",
-    location_id: profile.location_id || ""
+    insurance_plan_id: ""
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => { getConfiguration().then(setConfig); }, []);
+  useEffect(() => { getConfiguration().then(data => setConfig({ insurancePlans: data.insurancePlans })); }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1449,12 +1448,6 @@ function PatientForm({ profile, onCreated }: { profile: Profile; onCreated: (pat
           } : current)}
         />
         <label>Nro. afiliado<input value={form.affiliate_number} onChange={e => setForm({ ...form, affiliate_number: e.target.value })} /></label>
-        <label>Consultorio
-          <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={profile.role === "SECRETARIA"}>
-            <option value="">Sin consultorio</option>
-            {(config?.locations || []).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-          </select>
-        </label>
       </div>
       {error && <p className="error">{error}</p>}
       <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar paciente"}</button></div>
@@ -2013,7 +2006,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
         <div><span>Consultorios</span><strong>{patientConsultorios(currentPatient)}</strong></div>
       </section>
 
-      {panel === "datos" && <PatientContactForm patient={currentPatient} profile={profile} onSaved={refresh} />}
+      {panel === "datos" && <PatientContactForm patient={currentPatient} onSaved={refresh} />}
       {panel === "historia" && profile.role === "MEDICA_ADMIN" && <ClinicalEvolutionForm patient={currentPatient} onSaved={refresh} />}
       {panel === "historia" && profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas y no se muestran para secretaria.</p>}
       {panel === "adjuntos" && <AttachmentForm patient={currentPatient} onUploaded={refresh} />}
@@ -2176,20 +2169,19 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;");
 }
 
-function PatientContactForm({ patient, profile, onSaved }: { patient: Patient; profile: Profile; onSaved: () => Promise<void> }) {
-  const [config, setConfig] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[] } | null>(null);
+function PatientContactForm({ patient, onSaved }: { patient: Patient; onSaved: () => Promise<void> }) {
+  const [config, setConfig] = useState<{ insurancePlans: InsurancePlan[] } | null>(null);
   const [form, setForm] = useState<PatientContactInput>({
     phone: patient.phone || "",
     email: patient.email || "",
     affiliate_number: patient.affiliate_number || "",
-    insurance_plan_id: patient.insurance_plan_id || "",
-    location_id: patient.location_id || profile.location_id || ""
+    insurance_plan_id: patient.insurance_plan_id || ""
   });
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { getConfiguration().then(data => setConfig({ insurancePlans: data.insurancePlans, locations: data.locations })); }, []);
+  useEffect(() => { getConfiguration().then(data => setConfig({ insurancePlans: data.insurancePlans })); }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -2221,12 +2213,6 @@ function PatientContactForm({ patient, profile, onSaved }: { patient: Patient; p
           </select>
         </label>
         <label>Nro. afiliado<input value={form.affiliate_number} onChange={e => setForm({ ...form, affiliate_number: e.target.value })} /></label>
-        <label>Consultorio
-          <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={profile.role === "SECRETARIA"}>
-            <option value="">Sin consultorio</option>
-            {(config?.locations || []).filter(location => location.active).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-          </select>
-        </label>
       </div>
       {saved && <p className="notice ok-notice">Datos actualizados.</p>}
       {error && <p className="error">{error}</p>}

@@ -161,13 +161,9 @@ begin
 
   if public.is_secretary() then
     target_location := public.current_location_id();
-    if p_location_id is distinct from target_location then
+    if p_location_id is not null and p_location_id is distinct from target_location then
       raise exception 'La secretaria solo puede vincular pacientes a su consultorio.';
     end if;
-  end if;
-
-  if target_location is null then
-    raise exception 'Elegir el consultorio del paciente.';
   end if;
 
   select * into existing_patient
@@ -181,9 +177,11 @@ begin
       raise exception 'El documento ya pertenece a un paciente con otra fecha de nacimiento. Revisar los datos.';
     end if;
 
-    insert into public.patient_locations (patient_id, location_id, linked_by)
-    values (existing_patient.id, target_location, auth.uid())
-    on conflict do nothing;
+    if target_location is not null then
+      insert into public.patient_locations (patient_id, location_id, linked_by)
+      values (existing_patient.id, target_location, auth.uid())
+      on conflict do nothing;
+    end if;
 
     return jsonb_build_object('patient_id', existing_patient.id, 'already_existed', true);
   end if;
@@ -196,8 +194,10 @@ begin
     p_affiliate_number, p_insurance_plan_id, target_location
   ) returning id into patient_uuid;
 
-  insert into public.patient_locations (patient_id, location_id, linked_by)
-  values (patient_uuid, target_location, auth.uid());
+  if target_location is not null then
+    insert into public.patient_locations (patient_id, location_id, linked_by)
+    values (patient_uuid, target_location, auth.uid());
+  end if;
 
   return jsonb_build_object('patient_id', patient_uuid, 'already_existed', false);
 end;
