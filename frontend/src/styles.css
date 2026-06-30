@@ -346,11 +346,8 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
   border-radius: 12px;
   min-height: 42px;
 }
-.top-logout {
-  min-height: 34px;
-  font-size: 12px;
-  margin-top: -8px;
-}
+.patient-document-line { display: flex !important; align-items: center; gap: 7px; }
+.copy-document-button { min-height: 25px; padding: 3px 7px; border: 1px solid #b9d3d6; background: #f4faf9; color: #176f78; font-size: 11px; font-weight: 800; }
 .mobile-more-button,
 .mobile-more-menu {
   display: none;
@@ -1370,11 +1367,51 @@ input, select, textarea {
 .document-a4-preview section h3 { color: #176f78; text-transform: uppercase; font-size: 13px; }
 .document-preview-signature { width: 240px; display: grid; gap: 3px; margin: 90px 0 40px auto; text-align: center; }
 .document-preview-signature > span { border-top: 1px solid #66777f; }
+.document-preview-signature img { max-width: 220px; max-height: 84px; width: auto; height: auto; object-fit: contain; margin: 0 auto -2px; }
 .document-preview-signature small { color: #66777f; }
 .document-a4-preview footer { margin-top: auto; padding-top: 10px; border-top: 1px solid #cddadd; color: #66777f; font-size: 11px; }
 .document-generator-actions { bottom: 0; border-top: 1px solid #d4dfe2; border-bottom: 0; }
 .document-generator-actions span { overflow: hidden; color: #66777f; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .professional-document-settings { grid-column: 1 / -1; }
+.signature-upload-control { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #d4dfe2; border-radius: 8px; background: #f8fbfc; }
+.signature-upload-control > div { margin-right: auto; }
+.signature-upload-control strong, .signature-upload-control small { display: block; }
+.signature-upload-control small { color: #66777f; margin-top: 3px; }
+.signature-upload-control img { max-width: 150px; max-height: 60px; object-fit: contain; }
+.signature-upload-control label { cursor: pointer; }
+.signature-upload-control input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.public-home { min-height: 100vh; background: #f4f7f8; color: #172127; }
+.public-home-nav { height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(22px, calc((100vw - 1220px)/2)); background: white; border-bottom: 1px solid #d5e0e3; }
+.public-home-brand { display: flex; align-items: center; gap: 10px; color: #12343a; text-decoration: none; }
+.public-home-brand span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; background: #dff4ee; color: #075b4c; font-weight: 900; }
+.public-home-login { color: #176f78; font-weight: 800; text-decoration: none; }
+.public-home-hero { min-height: min(590px, calc(100vh - 120px)); display: flex; align-items: center; padding: 50px max(22px, calc((100vw - 1220px)/2)); background-image: linear-gradient(90deg, rgba(10,35,41,.91) 0%, rgba(10,35,41,.69) 45%, rgba(10,35,41,.12) 76%), url('/consultorio-login.png'); background-size: cover; background-position: center; color: white; }
+.public-home-hero-copy { width: min(610px, 100%); }
+.public-home-hero-copy p { margin: 0 0 12px; color: #9fd8ce; font-weight: 900; text-transform: uppercase; font-size: 12px; }
+.public-home-hero-copy h1 { margin: 0 0 15px; font-size: clamp(42px, 6vw, 74px); line-height: .98; }
+.public-home-hero-copy > span { display: block; max-width: 540px; color: #e1edef; font-size: 19px; line-height: 1.45; }
+.public-home-cta { display: inline-flex; margin-top: 28px; padding: 14px 22px; border-radius: 8px; background: #f1c95f; color: #102127; font-weight: 900; text-decoration: none; }
+.public-home-band { padding: 54px max(22px, calc((100vw - 1220px)/2)); background: white; }
+.public-home-band.muted { background: #edf3f4; }
+.public-home-section-head span,.public-home-locations > div span { color: #176f78; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+.public-home-section-head h2,.public-home-locations h2 { margin: 4px 0 24px; font-size: 30px; }
+.public-home-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; }
+.public-home-grid article { padding: 18px; border-left: 4px solid #176f78; background: #f5f9fa; }
+.public-home-grid article strong { font-size: 18px; }.public-home-grid article p { min-height: 42px; color: #64757d; }.public-home-grid article a { color: #176f78; font-weight: 900; }
+.public-professional-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap: 12px; }
+.public-professional-list article { display: flex; align-items: center; gap: 12px; padding: 14px; background: white; border: 1px solid #d4dfe2; }
+.public-professional-list article > span { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: #dff4ee; color: #075b4c; font-weight: 900; }.public-professional-list small { display:block; color:#66777f; margin-top:3px; }
+.public-practice-list { display:flex; flex-wrap:wrap; gap:8px; }.public-practice-list > span { display:flex; gap:10px; padding:9px 12px; border:1px solid #b9d3d6; border-radius:999px; font-weight:800; }.public-practice-list small { color:#66777f; }
+.public-home-locations { display:grid; grid-template-columns: minmax(250px,1fr) repeat(2,minmax(220px,.7fr)); gap:14px; padding:50px max(22px,calc((100vw - 1220px)/2)); background:#12343a; color:white; }.public-home-locations article { padding:16px; border:1px solid #537277; }.public-home-locations p { color:#c2d5d8; }
+.public-home-footer { display:flex; justify-content:space-between; padding:20px max(22px,calc((100vw - 1220px)/2)); background:#0b272c; color:#aac2c6; }.public-home-footer a { color:white; }
+.public-home-error { margin:12px auto; width:min(1220px,calc(100% - 32px)); color:#b23b3b; }
+
+.public-specialty-options { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }.public-specialty-options button { border:1px solid #b9d3d6; background:#f4f9fa; color:#176f78; }.public-specialty-options button.active { background:#176f78; color:white; }
+.public-practice-picker { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 20px; padding:12px; border:1px solid #d4dfe2; }.public-practice-picker legend { font-weight:900; }.public-practice-picker label { display:flex; align-items:center; gap:7px; padding:8px 10px; border-radius:7px; background:#f0f4f5; cursor:pointer; }.public-practice-picker label.selected { background:#dff4ee; color:#075b4c; }.public-practice-picker label span,.public-practice-picker label small { display:block; }.public-practice-picker label small { color:#66777f; }
+.commercial-manager { grid-column:1/-1; }.commercial-create-grid { display:grid; grid-template-columns:1fr 1.4fr; gap:12px; }.commercial-create-grid form { display:flex; align-items:end; gap:7px; flex-wrap:wrap; padding:12px; background:#f4f8f9; }.commercial-create-grid form strong { width:100%; }.commercial-manager details { border-top:1px solid #d4dfe2; padding-top:10px; }.commercial-manager summary { cursor:pointer; font-weight:900; }.commercial-rows { display:grid; gap:6px; margin-top:8px; }.commercial-rows > div { display:grid; grid-template-columns:minmax(180px,1fr) minmax(160px,1fr) auto auto; gap:10px; align-items:center; padding:8px; background:#f7fafb; }.commercial-rows label { display:flex; gap:5px; align-items:center; }.commercial-professionals { display:grid; gap:10px; margin-top:10px; }.commercial-professionals article { padding:12px; border:1px solid #d4dfe2; }.commercial-professionals article > div { display:flex; justify-content:space-between; }.commercial-professionals fieldset { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }.commercial-professionals fieldset label { display:flex; gap:5px; }
+
+@media (max-width: 760px) { .public-home-hero { min-height:520px; background-position:62% center; }.public-home-locations { grid-template-columns:1fr; }.commercial-create-grid { grid-template-columns:1fr; }.commercial-rows > div { grid-template-columns:1fr 1fr; }.signature-upload-control { align-items:flex-start; flex-direction:column; }.signature-upload-control > div { margin-right:0; } }
 
 @media (max-width: 760px) {
   .document-preview-backdrop { padding: 0; }

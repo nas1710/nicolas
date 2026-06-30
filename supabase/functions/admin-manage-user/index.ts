@@ -1,10 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type ManagedRole = "ADMINISTRADOR" | "MEDICA_ADMIN" | "SECRETARIA";
+type ManagedRole = "ADMINISTRADOR" | "MEDICA_ADMIN" | "MEDICO" | "SECRETARIA";
 
 function managedRole(value: unknown): ManagedRole {
   if (value === "ADMINISTRADOR") return "ADMINISTRADOR";
-  if (value === "MEDICA_ADMIN" || value === "MEDICO") return "MEDICA_ADMIN";
+  if (value === "MEDICA_ADMIN") return "MEDICA_ADMIN";
+  if (value === "MEDICO") return "MEDICO";
   return "SECRETARIA";
 }
 
@@ -139,15 +140,36 @@ Deno.serve(async request => {
       const temporaryPassword = normalizedDocument(target.document_number);
       if (temporaryPassword.length < 6) throw new Error("Carga el DNI del usuario antes de blanquear su contrasena.");
       const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(target.id, {
-        password: temporaryPassword
+        password: temporaryPassword,
+        email_confirm: true,
+        ban_duration: "none"
       });
       if (updateAuthError) throw updateAuthError;
       const { error: updateProfileError } = await adminClient
         .from("profiles")
-        .update({ must_change_password: true })
+        .update({ must_change_password: true, active: true })
         .eq("id", target.id);
       if (updateProfileError) throw updateProfileError;
       return json({ temporary_password: temporaryPassword }, corsHeaders);
+    }
+
+    if (action === "delete_user") {
+      if (!requester.is_master) throw new Error("Solo el usuario Maestro puede eliminar accesos.");
+      if (target.is_master) throw new Error("El usuario Maestro no puede eliminarse.");
+      if (target.id === requester.id) throw new Error("No podes eliminar tu propio acceso.");
+      const dependencyChecks = [
+        ["medical_availability", "doctor_id"], ["appointments", "doctor_id"], ["holidays", "doctor_id"],
+        ["clinical_evolutions", "created_by"], ["administrative_notes", "created_by"], ["communications", "created_by"],
+        ["attachments", "uploaded_by"]
+      ] as const;
+      for (const [table, column] of dependencyChecks) {
+        const { count, error: dependencyError } = await adminClient.from(table).select("id", { count: "exact", head: true }).eq(column, target.id);
+        if (dependencyError && dependencyError.code !== "42703") throw dependencyError;
+        if (count) throw new Error("El usuario tiene actividad asociada. Debe bloquearse para conservar la trazabilidad.");
+      }
+      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(target.id);
+      if (authDeleteError) throw authDeleteError;
+      return json({ deleted: true }, corsHeaders);
     }
 
     if (action === "set_active") {
@@ -155,16 +177,6 @@ Deno.serve(async request => {
       if (target.is_master) throw new Error("El usuario Maestro no puede bloquearse ni desactivarse.");
       if (!active && target.id === requester.id) throw new Error("No podes bloquear tu propio acceso.");
 
-      if (!active && target.role === "MEDICA_ADMIN") {
-        const { count, error: countError } = await adminClient
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "MEDICA_ADMIN")
-          .eq("active", true)
-          .neq("id", target.id);
-        if (countError) throw countError;
-        if (!count) throw new Error("Debe quedar al menos una medica/admin activa.");
-      }
       if (active && target.role === "SECRETARIA" && !target.location_id) {
         throw new Error("Asigna un consultorio antes de reactivar a la secretaria.");
       }
@@ -211,17 +223,6 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && target.active && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
-
-      if (target.role === "MEDICA_ADMIN" && role !== "MEDICA_ADMIN" && target.active) {
-        const { count, error: countError } = await adminClient
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "MEDICA_ADMIN")
-          .eq("active", true)
-          .neq("id", target.id);
-        if (countError) throw countError;
-        if (!count) throw new Error("Debe quedar al menos una medica/admin activa.");
-      }
 
       const authPatch: Record<string, unknown> = { user_metadata: { full_name: fullName } };
       if (email !== target.email.toLowerCase()) {

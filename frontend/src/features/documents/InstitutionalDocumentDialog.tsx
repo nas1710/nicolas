@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from "react";
-import type { Appointment, ClinicalEvolution, Patient, Profile } from "../../api/supabase";
+import React, { useEffect, useMemo, useState } from "react";
+import { createSignedSignatureUrl, type Appointment, type ClinicalEvolution, type Patient, type Profile } from "../../api/supabase";
 import { documentKindLabels, downloadInstitutionalPdf, InstitutionalDocumentKind, institutionalPdfFileName } from "./institutionalPdf";
 
 export function InstitutionalDocumentDialog({ patient, profile, onClose }: { patient: Patient; profile: Profile; onClose: () => void }) {
   const [kind, setKind] = useState<InstitutionalDocumentKind>("HISTORY");
+  const [signatureUrl, setSignatureUrl] = useState("");
   const latestEvolution = useMemo(() => [...(patient.clinical_evolutions || [])].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())[0], [patient]);
   const latestAppointment = useMemo(() => [...(patient.appointments || [])].filter(item => item.status !== "CANCELADO").sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())[0], [patient]);
+  useEffect(() => { if (profile.signature_path) createSignedSignatureUrl(profile.signature_path).then(setSignatureUrl).catch(() => setSignatureUrl("")); }, [profile.signature_path]);
 
   return (
     <div className="modal-backdrop document-preview-backdrop" role="dialog" aria-modal="true" aria-label="Generar documento PDF">
@@ -25,7 +27,7 @@ export function InstitutionalDocumentDialog({ patient, profile, onClose }: { pat
             <h1>{documentKindLabels[kind]}</h1>
             <div className="document-preview-patient"><strong>{patient.last_name}, {patient.first_name}</strong><span>{patient.document_type} {patient.document || "No informado"}</span><span>{patient.insurance_plans?.name || "Obra social no informada"}</span></div>
             <DocumentPreviewBody kind={kind} latestEvolution={latestEvolution} latestAppointment={latestAppointment} evolutionCount={patient.clinical_evolutions?.length || 0} />
-            <div className="document-preview-signature"><span /><strong>{profile.signature_name || profile.full_name}</strong><small>{profile.professional_license ? `Matricula ${profile.professional_license}` : "Matricula no informada"}</small></div>
+            <div className="document-preview-signature">{signatureUrl && <img src={signatureUrl} alt="Firma profesional" />}<span /><strong>{profile.signature_name || profile.full_name}</strong><small>{profile.specialty || profile.public_booking_specialty || "Profesional de la salud"}</small><small>{profile.professional_license ? `M.P. ${profile.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : "Matricula no informada"}</small></div>
             <footer>{profile.institutional_footer || "Documento confidencial generado por el sistema de gestion asistencial."}</footer>
           </article>
         </div>

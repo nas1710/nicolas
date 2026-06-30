@@ -4,18 +4,17 @@ import {
   formatProperName,
   IdentityDocumentType,
   InsurancePlan,
+  getPublicCommercialCatalog,
   listPublicBookingDates,
-  listPublicBookingDoctors,
   listPublicBookingInsurancePlans,
   listPublicBookingSlots,
   normalizeDocumentNumber,
+  PublicCommercialCatalog,
   PublicBookingDate,
-  PublicBookingDoctor,
   PublicBookingResult,
   PublicBookingSlot,
-  requestPublicBooking
+  requestCatalogBooking
 } from "../api/supabase";
-import { AppointmentTypeCode, AppointmentTypePicker } from "../features/appointments/appointmentTypes";
 import { useBuenosAiresClock } from "../hooks/useBuenosAiresClock";
 import { toDateInputValue } from "../utils/dates";
 import { documentTypeOptions } from "../utils/identity";
@@ -25,10 +24,11 @@ export function PublicBookingPage() {
   const today = officialClock.today;
   const maxDateValue = new Date(`${today}T12:00:00`);
   maxDateValue.setDate(maxDateValue.getDate() + 90);
-  const [doctors, setDoctors] = useState<PublicBookingDoctor[]>([]);
+  const [catalog, setCatalog] = useState<PublicCommercialCatalog>({ specialties: [], practices: [], professionals: [], locations: [] });
+  const [specialtyId, setSpecialtyId] = useState(new URLSearchParams(window.location.search).get("especialidad") || "");
   const [insurancePlans, setInsurancePlans] = useState<Pick<InsurancePlan, "id" | "name">[]>([]);
   const [doctorId, setDoctorId] = useState("");
-  const [types, setTypes] = useState<AppointmentTypeCode[]>(["CONSULTA"]);
+  const [practiceIds, setPracticeIds] = useState<string[]>([]);
   const [date, setDate] = useState(today);
   const [calendarMonth, setCalendarMonth] = useState(today.slice(0, 7));
   const [availableDates, setAvailableDates] = useState<PublicBookingDate[]>([]);
@@ -50,21 +50,24 @@ export function PublicBookingPage() {
     insurance_plan_id: "",
     website: ""
   });
-  const duration = publicBookingDuration(types);
+  const visibleDoctors = catalog.professionals.filter(doctor => !specialtyId || doctor.specialty_ids.includes(specialtyId));
+  const visiblePractices = catalog.practices.filter(practice => (!specialtyId || practice.specialty_id === specialtyId) && (!doctorId || catalog.professionals.find(item => item.id === doctorId)?.practice_ids.includes(practice.id)));
+  const duration = practiceIds.reduce((total, id) => total + (catalog.practices.find(item => item.id === id)?.duration_min || 0), 0);
 
   useEffect(() => {
-    Promise.all([listPublicBookingDoctors(), listPublicBookingInsurancePlans()])
-      .then(([doctorItems, planItems]) => {
-        setDoctors(doctorItems);
+    Promise.all([getPublicCommercialCatalog(), listPublicBookingInsurancePlans()])
+      .then(([catalogData, planItems]) => {
+        setCatalog(catalogData);
         setInsurancePlans(planItems);
-        if (doctorItems.length === 1) setDoctorId(doctorItems[0].id);
+        const initialSpecialty = specialtyId && catalogData.specialties.some(item => item.id === specialtyId) ? specialtyId : catalogData.specialties[0]?.id || "";
+        setSpecialtyId(initialSpecialty);
       })
       .catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda publica."))
       .finally(() => setLoadingCatalog(false));
   }, []);
 
   useEffect(() => {
-    if (!doctorId || types.length === 0) {
+    if (!doctorId || practiceIds.length === 0 || duration <= 0) {
       setAvailableDates([]);
       setLoadingDates(false);
       return;
@@ -90,7 +93,7 @@ export function PublicBookingPage() {
 
   useEffect(() => {
     setSelectedSlot(null);
-    if (!doctorId || !date || types.length === 0) {
+    if (!doctorId || !date || practiceIds.length === 0 || duration <= 0) {
       setSlots([]);
       return;
     }
@@ -115,7 +118,7 @@ export function PublicBookingPage() {
     setSaving(true);
     setError("");
     try {
-      const booking = await requestPublicBooking({ doctor_id: doctorId, starts_at: selectedSlot.starts_at, types, ...patient });
+      const booking = await requestCatalogBooking({ doctor_id: doctorId, starts_at: selectedSlot.starts_at, practice_ids: practiceIds, ...patient });
       setResult(booking);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -157,7 +160,7 @@ export function PublicBookingPage() {
       <header className="public-booking-header">
         <span className="brand">SP</span>
         <div><strong>Cardio Ayala</strong><small>Turnos online</small></div>
-        <a href="/">Acceso profesionales</a>
+        <a href="/login">Acceso profesionales</a>
       </header>
       <main className="public-booking-main">
         <div className="public-booking-title">
@@ -166,18 +169,21 @@ export function PublicBookingPage() {
         </div>
         <form className="public-booking-layout" onSubmit={submit}>
           <section className="public-booking-agenda">
-            <div className="booking-section-head"><span>1</span><div><h2>Profesional y práctica</h2><p>El consultorio se asigna automáticamente.</p></div></div>
+            <div className="booking-section-head"><span>1</span><div><h2>Especialidad, profesional y práctica</h2><p>El consultorio se asigna automáticamente según la agenda.</p></div></div>
+            <div className="public-specialty-options">
+              {catalog.specialties.map(specialty => <button type="button" key={specialty.id} className={specialtyId === specialty.id ? "active" : ""} onClick={() => { setSpecialtyId(specialty.id); setDoctorId(""); setPracticeIds([]); setSelectedSlot(null); }}>{specialty.name}</button>)}
+            </div>
             {loadingCatalog ? <p className="empty-day">Cargando profesionales...</p> : (
               <div className="doctor-options">
-                {doctors.map(doctor => (
-                  <button type="button" key={doctor.id} className={doctorId === doctor.id ? "doctor-option selected" : "doctor-option"} onClick={() => setDoctorId(doctor.id)}>
+                {visibleDoctors.map(doctor => (
+                  <button type="button" key={doctor.id} className={doctorId === doctor.id ? "doctor-option selected" : "doctor-option"} onClick={() => { setDoctorId(doctor.id); setPracticeIds([]); setSelectedSlot(null); }}>
                     <span className="avatar">{doctor.full_name.slice(0, 2).toUpperCase()}</span><span><strong>{doctor.full_name}</strong><small>{doctor.specialty}</small></span>
                   </button>
                 ))}
-                {!loadingCatalog && doctors.length === 0 && <p className="notice">Todavia no hay profesionales con horarios publicados.</p>}
+                {!loadingCatalog && visibleDoctors.length === 0 && <p className="notice">Todavia no hay profesionales publicados para esta especialidad.</p>}
               </div>
             )}
-            <AppointmentTypePicker value={types} onChange={setTypes} />
+            <fieldset className="public-practice-picker"><legend>Prácticas disponibles</legend>{visiblePractices.map(practice => <label key={practice.id} className={practiceIds.includes(practice.id) ? "selected" : ""}><input type="checkbox" checked={practiceIds.includes(practice.id)} onChange={() => { setPracticeIds(current => current.includes(practice.id) ? current.filter(id => id !== practice.id) : [...current, practice.id]); setSelectedSlot(null); }} /><span><strong>{practice.name}</strong><small>{practice.duration_min} min</small></span></label>)}{doctorId && !visiblePractices.length && <p>No hay prácticas publicadas para este profesional.</p>}</fieldset>
             <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
             <div className="public-date-time-picker">
               <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={toDateInputValue(maxDateValue)} onMonthChange={setCalendarMonth} onSelect={setDate} />
@@ -264,8 +270,4 @@ function calendarMonthBounds(month: string, minDate: string, maxDate: string) {
   const first = firstOfMonth < minDate ? minDate : firstOfMonth;
   const last = lastOfMonth > maxDate ? maxDate : lastOfMonth;
   return first <= last ? { first, last } : { first: "", last: "" };
-}
-
-function publicBookingDuration(types: AppointmentTypeCode[]) {
-  return types.reduce((total, type) => total + (type === "CONSULTA" || type === "ELECTROCARDIOGRAMA" ? 15 : 30), 0);
 }

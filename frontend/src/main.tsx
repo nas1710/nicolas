@@ -50,6 +50,9 @@ import {
   updateLocation,
   updatePatientContact,
   updateMyDocumentProfile,
+  uploadMySignature,
+  removeMySignature,
+  createSignedSignatureUrl,
   validateWebPatient,
   uploadPatientAttachment,
   createSignedAttachmentUrl,
@@ -73,9 +76,11 @@ import { Login, PasswordRecovery } from "./features/auth/AuthScreens";
 import { UserManager } from "./features/users/UserManager";
 import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalDocumentDialog";
 import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
+import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
 import { PublicBookingPage } from "./pages/PublicBookingPage";
-import { toDateInputValue } from "./utils/dates";
+import { PublicHomePage } from "./pages/PublicHomePage";
+import { toBuenosAiresDatetimeLocal, toDateInputValue } from "./utils/dates";
 import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
 import { canAccessClinical, canManageConfiguration, canManageUsers, roleLabel } from "./utils/permissions";
 import "./styles.css";
@@ -107,7 +112,10 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 }
 
 function App() {
-  const publicBookingPath = window.location.pathname.replace(/\/+$/, "") === "/turnos";
+  const routePath = window.location.pathname.replace(/\/+$/, "") || "/";
+  const publicBookingPath = routePath === "/turnos";
+  const authCallback = window.location.hash.includes("type=recovery") || window.location.hash.includes("error=");
+  const publicHomePath = routePath === "/" && !authCallback;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("inicio");
@@ -121,7 +129,7 @@ function App() {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => {
-    if (publicBookingPath) {
+    if (publicBookingPath || publicHomePath) {
       setLoading(false);
       return;
     }
@@ -146,8 +154,9 @@ function App() {
       getCurrentProfile().then(setProfile).catch(() => setProfile(null));
     });
     return () => data.subscription.unsubscribe();
-  }, [publicBookingPath]);
+  }, [publicBookingPath, publicHomePath]);
 
+  if (publicHomePath) return <PublicHomePage />;
   if (publicBookingPath) return <PublicBookingPage />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
   if (passwordRecovery) return <PasswordRecovery onDone={nextProfile => { setProfile(nextProfile); setPasswordRecovery(false); }} />;
@@ -189,7 +198,6 @@ function App() {
             <span>{roleLabel(profile)}</span>
           </div>
         </button>
-        <button className="logout-button top-logout" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <button className="nav-cta" onClick={navigateNewAppointment}>
           <span>+</span>
           Nuevo turno
@@ -202,6 +210,7 @@ function App() {
           <NavButton active={view === "estudios"} icon="ES" label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />
           <NavButton active={view === "tareas"} icon="TA" label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />
         </nav>
+        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <nav className="nav-group">
           <span>Administracion</span>
           <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
@@ -812,6 +821,13 @@ function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient;
   const lastVisit = getLastPatientVisit(patient);
   const whatsapp = buildWhatsappUrl(patient.phone, `Hola ${patient.first_name}, le escribimos del consultorio.`);
   const mail = patient.email ? `mailto:${patient.email}?subject=${encodeURIComponent("Consultorio cardiologia")}` : "";
+  const [copied, setCopied] = useState(false);
+  async function copyDocument() {
+    const value = patient.document || "";
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(true); window.setTimeout(() => setCopied(false), 1500);
+  }
 
   return (
     <article className={`patient-card ${patient.status === "baja" ? "is-inactive" : ""}`}>
@@ -820,7 +836,7 @@ function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient;
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
           <span>
             <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>} {patient.validation_status === "PENDIENTE" && <em className="pending-validation-badge">Pendiente de validacion</em>}</strong>
-            <small>{formatPatientDocument(patient)}</small>
+            <small className="patient-document-line">{formatPatientDocument(patient)}{patient.document && <span role="button" tabIndex={0} className="copy-document-button" title="Copiar numero de documento" aria-label={`Copiar documento de ${patient.first_name} ${patient.last_name}`} onClick={event => { event.stopPropagation(); void copyDocument(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); void copyDocument(); } }}>{copied ? "Copiado" : "Copiar"}</span>}</small>
           </span>
         </button>
         <div className="patient-quick-data">
@@ -1906,7 +1922,7 @@ function attachmentLabel(attachment: Attachment) {
 
 function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({
-    occurred_at: new Date().toISOString().slice(0, 16),
+    occurred_at: toBuenosAiresDatetimeLocal(),
     reason: "",
     diagnosis: "",
     notes: "",
@@ -1921,7 +1937,7 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
     setError("");
     try {
       await createClinicalEvolution({ ...form, patient_id: patient.id });
-      setForm({ occurred_at: new Date().toISOString().slice(0, 16), reason: "", diagnosis: "", notes: "", indications: "", next_visit_at: "" });
+      setForm({ occurred_at: toBuenosAiresDatetimeLocal(), reason: "", diagnosis: "", notes: "", indications: "", next_visit_at: "" });
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar la evolucion.");
@@ -2213,7 +2229,8 @@ function Settings({ profile }: { profile: Profile }) {
       {data && (
         <div className="admin-grid">
           {canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
-          <LocationManager locations={data.locations} canEdit={profile.is_master} onSaved={refresh} />
+          {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommercialCatalogManager />}
+          <LocationManager locations={data.locations} canEdit={profile.is_master || profile.role === "ADMINISTRADOR"} onSaved={refresh} />
           <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
           <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
           <HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
@@ -2252,10 +2269,27 @@ function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
   });
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [signaturePath, setSignaturePath] = useState(profile.signature_path || "");
+  const [signatureUrl, setSignatureUrl] = useState("");
+  useEffect(() => { if (signaturePath) createSignedSignatureUrl(signaturePath).then(setSignatureUrl).catch(() => setSignatureUrl("")); else setSignatureUrl(""); }, [signaturePath]);
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setSaving(true); setStatus("");
     try { const updated = await updateMyDocumentProfile(form); Object.assign(profile, updated); setStatus("Datos guardados para los proximos documentos."); }
     catch (error) { setStatus(error instanceof Error ? error.message : "No se pudieron guardar los datos."); }
+    finally { setSaving(false); }
+  }
+  async function uploadSignature(file?: File) {
+    if (!file) return;
+    setSaving(true); setStatus("");
+    try { const path = await uploadMySignature(file, signaturePath); setSignaturePath(path); profile.signature_path = path; setStatus("Firma guardada de forma privada."); }
+    catch (error) { setStatus(error instanceof Error ? error.message : "No se pudo guardar la firma."); }
+    finally { setSaving(false); }
+  }
+  async function removeSignature() {
+    if (!signaturePath || !window.confirm("Quitar la firma escaneada del perfil?")) return;
+    setSaving(true); setStatus("");
+    try { await removeMySignature(signaturePath); setSignaturePath(""); profile.signature_path = null; setStatus("Firma eliminada."); }
+    catch (error) { setStatus(error instanceof Error ? error.message : "No se pudo eliminar la firma."); }
     finally { setSaving(false); }
   }
   return <section className="panel admin-section professional-document-settings">
@@ -2266,6 +2300,7 @@ function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
       <label>Matricula<input value={form.professional_license} onChange={event => setForm({ ...form, professional_license: event.target.value })} placeholder="MP / MN" /></label>
       <label>Nombre de firma<input value={form.signature_name} onChange={event => setForm({ ...form, signature_name: event.target.value })} /></label>
       <label className="full-field">Pie institucional<input value={form.institutional_footer} onChange={event => setForm({ ...form, institutional_footer: event.target.value })} placeholder="Direccion, telefono o texto institucional" /></label>
+      <div className="full-field signature-upload-control"><div><strong>Firma escaneada</strong><small>JPG, JPEG, PNG o WEBP. Maximo 2 MB.</small></div>{signatureUrl && <img src={signatureUrl} alt="Firma escaneada actual" />}<label className="secondary-action">{signaturePath ? "Cambiar firma" : "Cargar firma"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => void uploadSignature(event.target.files?.[0])} /></label>{signaturePath && <button type="button" className="danger-action" onClick={() => void removeSignature()}>Quitar firma</button>}</div>
       {status && <p className={status.startsWith("Datos") ? "notice ok-notice" : "error"}>{status}</p>}
       <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar datos PDF"}</button></div>
     </form>

@@ -1,4 +1,5 @@
 import type { Appointment, ClinicalEvolution, Patient, Profile } from "../../api/supabase";
+import { createSignedSignatureUrl } from "../../api/supabase";
 
 export type InstitutionalDocumentKind = "HISTORY" | "MEDICAL_REPORT" | "ATTENDANCE_CERTIFICATE" | "APPOINTMENT_SUMMARY" | "INDICATIONS";
 
@@ -24,6 +25,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind }: PdfConte
   const latestEvolution = evolutions[evolutions.length - 1];
   const appointments = sortedAppointments(patient);
   const latestAppointment = appointments[appointments.length - 1];
+  const signatureImage = profile.signature_path ? await loadSignatureImage(profile.signature_path).catch(() => null) : null;
   let y = 0;
 
   const addPage = () => {
@@ -88,6 +90,12 @@ export async function buildInstitutionalPdf({ patient, profile, kind }: PdfConte
 
   ensure(36);
   y += 10;
+  if (signatureImage) {
+    const properties = doc.getImageProperties(signatureImage.data);
+    const width = Math.min(58, properties.width * 18 / properties.height);
+    const height = width * properties.height / properties.width;
+    doc.addImage(signatureImage.data, signatureImage.format, 156 - width / 2, y - height - 2, width, height, undefined, "FAST");
+  }
   doc.setDrawColor(100, 113, 120);
   doc.line(122, y, 190, y);
   y += 5;
@@ -95,7 +103,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind }: PdfConte
   doc.text(profile.signature_name || profile.full_name, 156, y, { align: "center" });
   doc.setFont("helvetica", "normal"); doc.setFontSize(8);
   doc.text(profile.specialty || profile.public_booking_specialty || "Profesional de la salud", 156, y + 5, { align: "center" });
-  doc.text(profile.professional_license ? `Matricula ${profile.professional_license}` : "Matricula no informada", 156, y + 10, { align: "center" });
+  doc.text(profile.professional_license ? `M.P. ${profile.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : "Matricula no informada", 156, y + 10, { align: "center" });
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
@@ -176,3 +184,12 @@ function formatDate(value?: string | null) { return value ? new Date(value).toLo
 function formatDateOnly(value?: string | null) { if (!value) return "No informada"; const [year, month, day] = value.slice(0, 10).split("-"); return `${day}/${month}/${year}`; }
 function cleanAppointmentReason(appointment?: Appointment) { return appointment?.reason?.replace(/\[\[MOTIVOS_TURNO:[^\]]+\]\]/g, "").trim() || appointment?.type?.replace(/_/g, " ") || ""; }
 function sanitize(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, ""); }
+
+async function loadSignatureImage(path: string) {
+  const url = await createSignedSignatureUrl(path);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("No se pudo cargar la firma.");
+  const blob = await response.blob();
+  const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
+  return { data, format: blob.type === "image/png" ? "PNG" : blob.type === "image/webp" ? "WEBP" : "JPEG" };
+}

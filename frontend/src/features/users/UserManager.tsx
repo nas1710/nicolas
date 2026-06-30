@@ -8,6 +8,7 @@ import {
   Profile,
   ProfileInput,
   resetUserPasswordToDocument,
+  deleteUserPermanently,
   setProfileActive,
   updateProfile
 } from "../../api/supabase";
@@ -56,7 +57,7 @@ export function UserManager({ users, locations, onSaved }: { users: Profile[]; l
             <label>Rol
               <select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
                 <option value="SECRETARIA">Secretaria</option>
-                <option value="MEDICA_ADMIN">Medico</option>
+                <option value="MEDICO">Medico</option>
                 <option value="ADMINISTRADOR">Administrador</option>
               </select>
             </label>
@@ -150,6 +151,15 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
     }
   }
 
+  async function deleteUser() {
+    if (user.is_master) return;
+    if (!window.confirm(`Eliminar definitivamente a ${user.full_name}? Solo se permite si no tiene actividad asociada.`)) return;
+    setChangingStatus(true); setResetStatus("");
+    try { await deleteUserPermanently(user.id); await onSaved(); }
+    catch (err) { setResetStatus(err instanceof Error ? err.message : "No se pudo eliminar el usuario."); }
+    finally { setChangingStatus(false); }
+  }
+
   if (!editing) {
     return (
       <article className={`user-card ${user.active ? "" : "is-inactive"}`}>
@@ -170,6 +180,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
             </label>
           )}
           {!user.is_master && <button type="button" className="secondary-action" onClick={() => setEditing(true)}>Editar</button>}
+          {!user.is_master && <button type="button" className="danger-action" disabled={changingStatus} onClick={() => void deleteUser()}>Eliminar</button>}
         </div>
         {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
       </article>
@@ -183,7 +194,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
         <label>Email<input value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></label>
         <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={event => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", event.target.value) })} inputMode="numeric" /></label>
         <label>Rol<select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
-          <option value="SECRETARIA">Secretaria</option><option value="MEDICA_ADMIN">Medico</option><option value="ADMINISTRADOR">Administrador</option>
+          <option value="SECRETARIA">Secretaria</option><option value="MEDICO">Medico</option><option value="ADMINISTRADOR">Administrador</option>
         </select></label>
         <label>Consultorio<select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role !== "SECRETARIA"}>
           <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -193,6 +204,7 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
         <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
         <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
         <button type="button" onClick={() => void resetPassword()}>Blanquear clave</button>
+        <button type="button" className="danger-action" onClick={() => void deleteUser()}>Eliminar usuario</button>
       </div>
       {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
     </article>

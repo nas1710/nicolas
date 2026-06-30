@@ -13,6 +13,13 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if not exists (select 1 from pg_enum e join pg_type t on t.oid=e.enumtypid join pg_namespace n on n.oid=t.typnamespace where n.nspname='public' and t.typname='user_role' and e.enumlabel='MEDICO') then
+    alter type public.user_role add value 'MEDICO';
+  end if;
+end $$;
+
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -20,7 +27,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select public.current_role()::text in ('MEDICA_ADMIN', 'ADMINISTRADOR');
+  select public.current_role()::text in ('MEDICA_ADMIN', 'MEDICO', 'ADMINISTRADOR');
 $$;
 
 drop policy if exists "profiles read own or admin" on public.profiles;

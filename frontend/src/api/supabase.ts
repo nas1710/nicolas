@@ -71,6 +71,7 @@ export type Profile = {
   signature_name?: string | null;
   institution_name?: string | null;
   institutional_footer?: string | null;
+  signature_path?: string | null;
   location?: Location | null;
 };
 
@@ -97,6 +98,16 @@ export type PublicBookingDoctor = {
   full_name: string;
   specialty: string;
 };
+
+export type PublicSpecialty = { id: string; name: string; description: string | null };
+export type PublicPractice = { id: string; specialty_id: string; name: string; description: string | null; duration_min: number };
+export type PublicProfessional = { id: string; full_name: string; specialty: string; specialty_ids: string[]; practice_ids: string[] };
+export type PublicLocation = { id: string; name: string; address: string | null };
+export type PublicCommercialCatalog = { specialties: PublicSpecialty[]; practices: PublicPractice[]; professionals: PublicProfessional[]; locations: PublicLocation[] };
+export type CommercialSpecialty = PublicSpecialty & { active: boolean; published: boolean };
+export type CommercialPractice = PublicPractice & { active: boolean; published: boolean };
+export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[] };
+export type CommercialAdminCatalog = { specialties: CommercialSpecialty[]; practices: CommercialPractice[]; professionals: CommercialProfessional[] };
 
 export type PublicBookingSlot = {
   starts_at: string;
@@ -129,6 +140,8 @@ export type PublicBookingInput = {
   insurance_plan_id?: string;
   website?: string;
 };
+
+export type CatalogBookingInput = Omit<PublicBookingInput, "types"> & { practice_ids: string[] };
 
 export type PublicBookingResult = {
   appointment_id: string;
@@ -366,7 +379,8 @@ function authErrorMessage(error: { message: string; code?: string } | null) {
 
 function toIsoDateTime(value?: string | null) {
   if (!value) return null;
-  return new Date(value).toISOString();
+  const buenosAiresValue = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00-03:00` : value;
+  return new Date(buenosAiresValue).toISOString();
 }
 
 export function parseBirthDate(value?: string | null) {
@@ -482,7 +496,7 @@ export async function requestUserAccess(input: { email: string; password: string
 
 export async function requestPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: window.location.origin
+    redirectTo: `${window.location.origin}/login`
   });
   if (error) throw new Error(authErrorMessage(error));
 }
@@ -536,6 +550,36 @@ export async function updateMyDocumentProfile(input: Pick<Profile, "specialty" |
   });
   throwIfError(error);
   return data as Profile;
+}
+
+export async function uploadMySignature(file: File, previousPath?: string | null) {
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error('La firma debe ser JPG, JPEG, PNG o WEBP.');
+  if (file.size > 2 * 1024 * 1024) throw new Error('La firma no puede superar 2 MB.');
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session.session?.user.id;
+  if (!userId) throw new Error('Sesion invalida.');
+  const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${userId}/signature.${extension}`;
+  const { error: uploadError } = await supabase.storage.from('professional-signatures').upload(path, file, { upsert: true, contentType: file.type });
+  throwIfError(uploadError);
+  const { error: profileError } = await supabase.rpc('set_my_signature_path', { p_signature_path: path });
+  if (profileError) { await supabase.storage.from('professional-signatures').remove([path]); throwIfError(profileError); }
+  if (previousPath && previousPath !== path) await supabase.storage.from('professional-signatures').remove([previousPath]);
+  return path;
+}
+
+export async function removeMySignature(path: string) {
+  const { error: removeError } = await supabase.storage.from('professional-signatures').remove([path]);
+  throwIfError(removeError);
+  const { error } = await supabase.rpc('set_my_signature_path', { p_signature_path: '' });
+  throwIfError(error);
+}
+
+export async function createSignedSignatureUrl(path: string) {
+  const { data, error } = await supabase.storage.from('professional-signatures').createSignedUrl(path, 300);
+  throwIfError(error);
+  if (!data?.signedUrl) throw new Error("No se pudo generar el acceso temporal a la firma.");
+  return data.signedUrl;
 }
 
 export async function listPatients(query = "") {
@@ -781,6 +825,32 @@ export async function listPublicBookingDoctors() {
   return (data || []) as PublicBookingDoctor[];
 }
 
+export async function getPublicCommercialCatalog() {
+  const { data, error } = await supabase.rpc("public_commercial_catalog");
+  throwIfError(error);
+  const value = data as Partial<PublicCommercialCatalog> | null;
+  return { specialties: value?.specialties || [], practices: value?.practices || [], professionals: value?.professionals || [], locations: value?.locations || [] } as PublicCommercialCatalog;
+}
+
+export async function getCommercialAdminCatalog() {
+  const { data, error } = await supabase.rpc("commercial_admin_catalog"); throwIfError(error); return data as CommercialAdminCatalog;
+}
+export async function createCommercialSpecialty(input: { name: string; description?: string }) {
+  const { error } = await supabase.from("specialties").insert({ name: formatProperName(input.name), description: input.description?.trim() || null }); throwIfError(error);
+}
+export async function updateCommercialSpecialty(id: string, input: Partial<CommercialSpecialty>) {
+  const { error } = await supabase.from("specialties").update(input).eq("id", id); throwIfError(error);
+}
+export async function createCommercialPractice(input: { specialty_id: string; name: string; duration_min: number }) {
+  const { error } = await supabase.from("practices").insert({ specialty_id: input.specialty_id, name: formatProperName(input.name), duration_min: input.duration_min }); throwIfError(error);
+}
+export async function updateCommercialPractice(id: string, input: Partial<CommercialPractice>) {
+  const { error } = await supabase.from("practices").update(input).eq("id", id); throwIfError(error);
+}
+export async function setProfessionalCommercialProfile(input: { professional_id: string; published: boolean; specialty_ids: string[]; practice_ids: string[] }) {
+  const { error } = await supabase.rpc("set_professional_commercial_profile", { p_professional_id: input.professional_id, p_published: input.published, p_specialty_ids: input.specialty_ids, p_practice_ids: input.practice_ids }); throwIfError(error);
+}
+
 export async function getBuenosAiresClock() {
   const { data, error } = await supabase.rpc("current_buenos_aires_clock");
   throwIfError(error);
@@ -821,6 +891,18 @@ export async function listPublicBookingInsurancePlans() {
   }
   throwIfError(error);
   return (data || []) as Pick<InsurancePlan, "id" | "name">[];
+}
+
+export async function requestCatalogBooking(input: CatalogBookingInput) {
+  const document = normalizeDocumentNumber(input.document_type, input.document);
+  const { data, error } = await supabase.rpc("public_request_catalog_appointment", {
+    p_doctor_id: input.doctor_id, p_starts_at: input.starts_at, p_practice_ids: input.practice_ids,
+    p_first_name: formatProperName(input.first_name), p_last_name: formatProperName(input.last_name),
+    p_document_type: input.document_type, p_document: document, p_phone: input.phone || "", p_email: input.email || "",
+    p_insurance_plan_id: input.insurance_plan_id || null, p_website: input.website || ""
+  });
+  throwIfError(error);
+  return data as PublicBookingResult;
 }
 
 export async function requestPublicBooking(input: PublicBookingInput) {
@@ -1133,4 +1215,8 @@ export async function setProfileActive(id: string, active: boolean) {
 export async function resetUserPasswordToDocument(userId: string) {
   const data = await invokeUserAdministration({ action: "reset_password", user_id: userId });
   return data as { temporary_password: string };
+}
+
+export async function deleteUserPermanently(userId: string) {
+  await invokeUserAdministration({ action: "delete_user", user_id: userId });
 }

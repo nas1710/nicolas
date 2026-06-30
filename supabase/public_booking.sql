@@ -4,8 +4,9 @@
 begin;
 
 alter table public.profiles add column if not exists public_booking_enabled boolean not null default true;
-alter table public.profiles add column if not exists specialty text not null default 'Cardiologia';
-update public.profiles set public_booking_enabled = false where role <> 'MEDICA_ADMIN';
+alter table public.profiles add column if not exists specialty text not null default 'Medicina general';
+alter table public.profiles alter column specialty set default 'Medicina general';
+update public.profiles set public_booking_enabled = false where role::text not in ('MEDICA_ADMIN','MEDICO');
 
 alter table public.medical_availability
   add column if not exists doctor_id uuid references public.profiles(id) on delete restrict;
@@ -26,7 +27,7 @@ declare
 begin
   select id into default_doctor
   from public.profiles
-  where role = 'MEDICA_ADMIN' and active
+  where role::text in ('MEDICA_ADMIN','MEDICO') and active
   order by (lower(email) = 'nas1710@gmail.com') desc, created_at
   limit 1;
 
@@ -64,7 +65,7 @@ begin
   if new.doctor_id is null then
     select id into target_doctor_id
     from public.profiles
-    where id = auth.uid() and role = 'MEDICA_ADMIN' and active;
+    where id = auth.uid() and role::text in ('MEDICA_ADMIN','MEDICO') and active;
     new.doctor_id := target_doctor_id;
   end if;
 
@@ -121,7 +122,7 @@ begin
     new.doctor_id := null;
   elsif new.doctor_id is null then
     select id into target_doctor_id from public.profiles
-    where id = auth.uid() and role = 'MEDICA_ADMIN' and active;
+    where id = auth.uid() and role::text in ('MEDICA_ADMIN','MEDICO') and active;
     new.doctor_id := target_doctor_id;
   end if;
   return new;
@@ -223,7 +224,7 @@ as $$
   select profile.id, profile.full_name, profile.specialty
   from public.profiles profile
   where profile.active
-    and profile.role = 'MEDICA_ADMIN'
+    and profile.role::text in ('MEDICA_ADMIN','MEDICO')
     and profile.public_booking_enabled
     and exists (
       select 1 from public.medical_availability availability
@@ -279,7 +280,7 @@ as $$
       select 1 from public.profiles profile
       where profile.id = p_doctor_id
         and profile.active
-        and profile.role = 'MEDICA_ADMIN'
+        and profile.role::text in ('MEDICA_ADMIN','MEDICO')
         and profile.public_booking_enabled
     )
     and availability.weekday = extract(dow from p_date)::int
@@ -401,7 +402,7 @@ begin
 
   select profile.full_name into doctor_name
   from public.profiles profile
-  where profile.id = p_doctor_id and profile.active and profile.role = 'MEDICA_ADMIN' and profile.public_booking_enabled;
+  where profile.id = p_doctor_id and profile.active and profile.role::text in ('MEDICA_ADMIN','MEDICO') and profile.public_booking_enabled;
   if doctor_name is null then raise exception 'El profesional no recibe turnos web.'; end if;
 
   if (

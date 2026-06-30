@@ -4,8 +4,8 @@
 
 Hay dos recorridos y no deben mezclarse:
 
-1. Base nueva: `schema.sql` y luego `public_booking.sql`.
-2. Base existente: `01_consolidar_base_actual.sql` y luego `public_booking.sql`.
+1. Base nueva: `schema.sql` y luego las migraciones numeradas.
+2. Base existente: `01_consolidar_base_actual.sql` y luego las migraciones numeradas.
 
 `public_booking.sql` se mantiene separado porque contiene la agenda por profesional y los RPC anonimos de `/turnos`. `01_consolidar_base_actual.sql` y `public_booking.sql` son idempotentes; `schema.sql` se ejecuta una sola vez sobre una base nueva vacia.
 
@@ -20,7 +20,9 @@ Ejecutar en SQL Editor con rol `postgres`:
 3. `supabase/02_role_hierarchy.sql`
 4. `supabase/03_web_patient_validation.sql`
 5. `supabase/04_institutional_pdf_profiles.sql`
-6. Desplegar `supabase/functions/admin-manage-user`
+6. `supabase/05_professional_signatures.sql`
+7. `supabase/06_commercial_catalog.sql`
+8. Desplegar `supabase/functions/admin-manage-user`
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -33,7 +35,9 @@ Para la base publicada de Cardio Ayala:
 3. `supabase/02_role_hierarchy.sql`
 4. `supabase/03_web_patient_validation.sql`
 5. `supabase/04_institutional_pdf_profiles.sql`
-6. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
+6. `supabase/05_professional_signatures.sql`
+7. `supabase/06_commercial_catalog.sql`
+8. Desplegar nuevamente `supabase/functions/admin-manage-user` cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
@@ -59,7 +63,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 ### Tablas
 
 - Seguridad: `profiles`, `audit_logs`.
-- Configuracion: `locations`, `insurance_plans`, `medical_availability`, `holidays`.
+- Configuracion: `locations`, `insurance_plans`, `medical_availability`, `holidays`, `specialties`, `practices`, `professional_specialties`, `professional_practices`.
 - Pacientes: `patients`, `patient_locations`.
 - Atencion: `appointments`, `clinical_evolutions`, `administrative_notes`.
 - Estudios y comunicacion: `studies`, `reports`, `attachments`, `communications`.
@@ -68,7 +72,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 
 - Paciente unico por `(document_type, document)`.
 - `patient_locations` es la unica relacion vigente paciente-consultorio.
-- Turnos pertenecen a paciente, profesional y consultorio.
+- Turnos pertenecen a paciente, profesional y consultorio; sus practicas dinamicas se registran en `appointment_practices`.
 - Disponibilidades pertenecen a profesional y consultorio.
 - `patients.location_id` permanece solo como dato legado, sin FK.
 
@@ -87,7 +91,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 - Las secretarias acceden a pacientes mediante `patient_locations`.
 - Las evoluciones clinicas quedan restringidas a medica/admin.
 - El rol anonimo solo ejecuta los RPC publicos expresamente concedidos.
-- Bucket privado requerido: `patient-files`.
+- Buckets privados requeridos: `patient-files` y `professional-signatures`.
 - Las policies de `storage.objects` validan acceso mediante el paciente de la ruta.
 
 ## Administracion de usuarios

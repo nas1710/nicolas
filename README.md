@@ -72,6 +72,14 @@ en cadena sobre una base consolidada.
 La base publicada conserva protegido como usuario maestro a `nas1710@gmail.com`:
 otro administrador no puede cambiarle rol, consultorio, estado ni privilegios.
 
+## Rutas publicas e internas
+
+- `/`: home publica que lee de Supabase especialidades, profesionales publicados, practicas y consultorios activos.
+- `/turnos`: turnera publica; comienza por especialidad y ofrece profesionales, practicas y horarios reales.
+- `/login`: acceso interno para Master, Administrador, Medico y Secretaria.
+
+`frontend/vercel.json` reescribe estas rutas a la SPA, por lo que pueden abrirse o actualizarse directamente sin error 404.
+
 Ese SQL crea:
 
 - tablas
@@ -110,7 +118,7 @@ Despues, desde la app, la medica/admin puede entrar a **Ajustes > Usuarios** y c
 
 ## Permisos
 
-`MEDICA_ADMIN`:
+`MEDICA_ADMIN` y `MEDICO`:
 
 - ve todo
 - edita todo
@@ -161,6 +169,10 @@ automaticamente en Supabase. Toma los datos disponibles del paciente,
 profesional, especialidad, matricula, practica y consultorio. Los campos
 profesionales opcionales se agregan con
 `supabase/04_institutional_pdf_profiles.sql`.
+
+Cada profesional puede cargar una firma escaneada JPG, PNG o WEBP de hasta
+2 MB. Se guarda en el bucket privado `professional-signatures`; el PDF solicita
+una URL temporal solo al generarse y nunca publica la firma anonimamente.
 
 ## Pacientes y turnos
 
@@ -295,8 +307,13 @@ supabase/public_booking.sql
 - registra el turno como `PENDIENTE`
 - limita solicitudes repetidas para un mismo documento
 
-Para que otra medica aparezca en la pagina publica debe estar activa, tener rol
-`MEDICA_ADMIN` y contar con al menos un horario de disponibilidad propio.
+Para que un profesional aparezca en la pagina publica debe estar activo, tener
+rol `MEDICO` (se conserva compatibilidad con `MEDICA_ADMIN`), estar publicado,
+tener especialidades/practicas asociadas y al menos un horario de disponibilidad.
+
+Master y Administrador gestionan el catalogo comercial desde Ajustes. Las
+especialidades, practicas y duraciones son datos editables de Supabase; no son
+la lista fija de Cardiologia del prototipo.
 
 El archivo `frontend/vercel.json` hace que Vercel sirva correctamente la ruta
 `/turnos` al abrirla o actualizarla directamente.
