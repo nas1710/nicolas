@@ -16,15 +16,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Crear otra cuenta no debe reemplazar la sesion actual de la medica.
-const accountProvisioningClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
-  }
-});
-
 export type Role = "MEDICA_ADMIN" | "SECRETARIA";
 export type IdentityDocumentType = "DNI" | "LC" | "LE" | "PASAPORTE" | "CEDULA_IDENTIDAD" | "DOCUMENTO_EXTRANJERO";
 
@@ -42,6 +33,9 @@ export type Profile = {
   role: Role;
   location_id: string | null;
   active: boolean;
+  is_master: boolean;
+  must_change_password: boolean;
+  document_number: string | null;
   location?: Location | null;
 };
 
@@ -59,7 +53,45 @@ export type MedicalAvailability = {
   end_time: string;
   slot_interval_min: number;
   location_id: string;
+  doctor_id: string | null;
   locations?: Location | null;
+};
+
+export type PublicBookingDoctor = {
+  id: string;
+  full_name: string;
+  specialty: string;
+};
+
+export type PublicBookingSlot = {
+  starts_at: string;
+  location_id: string;
+  location_name: string;
+  location_address: string | null;
+};
+
+export type PublicBookingInput = {
+  doctor_id: string;
+  starts_at: string;
+  types: string[];
+  first_name: string;
+  last_name: string;
+  document_type: IdentityDocumentType;
+  document: string;
+  birth_date?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+};
+
+export type PublicBookingResult = {
+  appointment_id: string;
+  starts_at: string;
+  duration_min: number;
+  doctor_name: string;
+  location_name: string;
+  location_address: string | null;
+  status: "PENDIENTE";
 };
 
 export type Holiday = {
@@ -68,6 +100,7 @@ export type Holiday = {
   name: string;
   kind: "FERIADO" | "VACACIONES" | "CONGRESO" | "LICENCIA" | "OTRO";
   active: boolean;
+  doctor_id?: string | null;
 };
 
 export type Patient = {
@@ -104,6 +137,7 @@ export type Appointment = {
   status: AppointmentStatus;
   patient_id: string;
   location_id: string;
+  doctor_id?: string | null;
   patients?: Patient | null;
   locations?: Location | null;
 };
@@ -249,6 +283,7 @@ export type ProfileInput = {
   role: Role;
   location_id?: string | null;
   active: boolean;
+  document_number?: string | null;
 };
 
 export type NewUserInput = {
@@ -257,6 +292,7 @@ export type NewUserInput = {
   full_name: string;
   role: Role;
   location_id?: string | null;
+  document_number?: string | null;
 };
 
 function throwIfError(error: { message: string } | null) {
@@ -290,7 +326,8 @@ function toIsoDateTime(value?: string | null) {
 
 export function parseBirthDate(value?: string | null) {
   if (!value) return null;
-  const cleanValue = value.trim();
+  const rawValue = value.trim();
+  const cleanValue = /^\d{8}$/.test(rawValue) ? formatBirthDateInput(rawValue) : rawValue;
   const displayMatch = cleanValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   const isoMatch = cleanValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!displayMatch && !isoMatch) throw new Error("La fecha de nacimiento debe tener formato dd/mm/yyyy.");
@@ -316,6 +353,13 @@ export function parseBirthDate(value?: string | null) {
   }
 
   return `${yearText}-${monthText}-${dayText}`;
+}
+
+export function formatBirthDateInput(value?: string | null) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 export function formatProperName(value?: string | null) {
@@ -399,6 +443,9 @@ export async function requestPasswordReset(email: string) {
 export async function updateCurrentPassword(password: string) {
   const { error } = await supabase.auth.updateUser({ password });
   if (error) throw new Error(authErrorMessage(error));
+
+  const { error: profileError } = await supabase.rpc("complete_password_change");
+  throwIfError(profileError);
 }
 
 export async function resendConfirmationEmail(email: string) {
@@ -492,6 +539,9 @@ export async function createPatient(input: PatientInput) {
     p_insurance_plan_id: input.insurance_plan_id || null,
     p_location_id: input.location_id
   });
+  if (error?.message?.includes("register_or_link_patient") && error.message.includes("schema cache")) {
+    throw new Error("Supabase necesita la actualizacion de pacientes unicos. Ejecuta supabase/patient_uniqueness.sql en el SQL Editor y vuelve a intentar.");
+  }
   throwIfError(error);
 
   const result = data as { patient_id: string; already_existed: boolean };
@@ -524,9 +574,13 @@ export async function updatePatientContact(id: string, input: PatientContactInpu
 }
 
 export async function deactivatePatient(id: string) {
+  return setPatientActive(id, false);
+}
+
+export async function setPatientActive(id: string, active: boolean) {
   const { data, error } = await supabase
     .from("patients")
-    .update({ status: "baja" })
+    .update({ status: active ? "activo" : "baja" })
     .eq("id", id)
     .select("*, insurance_plans(*), locations(*)")
     .single();
@@ -659,6 +713,50 @@ export async function listAppointments() {
     .order("starts_at", { ascending: true });
   throwIfError(error);
   return (data || []) as Appointment[];
+}
+
+export async function listPublicBookingDoctors() {
+  const { data, error } = await supabase.rpc("public_booking_doctors");
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("Los turnos online se estan configurando. Volve a intentar en unos minutos.");
+  }
+  throwIfError(error);
+  return (data || []) as PublicBookingDoctor[];
+}
+
+export async function listPublicBookingSlots(doctorId: string, date: string, durationMin: number) {
+  const { data, error } = await supabase.rpc("public_booking_slots", {
+    p_doctor_id: doctorId,
+    p_date: date,
+    p_duration_min: durationMin
+  });
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("Los turnos online se estan configurando. Volve a intentar en unos minutos.");
+  }
+  throwIfError(error);
+  return (data || []) as PublicBookingSlot[];
+}
+
+export async function requestPublicBooking(input: PublicBookingInput) {
+  const document = normalizeDocumentNumber(input.document_type, input.document);
+  const { data, error } = await supabase.rpc("public_request_appointment", {
+    p_doctor_id: input.doctor_id,
+    p_starts_at: input.starts_at,
+    p_types: input.types,
+    p_first_name: formatProperName(input.first_name),
+    p_last_name: formatProperName(input.last_name),
+    p_document_type: input.document_type,
+    p_document: document,
+    p_birth_date: parseBirthDate(input.birth_date),
+    p_phone: input.phone?.trim() || null,
+    p_email: input.email?.trim() || null,
+    p_website: input.website || ""
+  });
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("Los turnos web todavia no estan habilitados en Supabase. Ejecuta supabase/public_booking.sql.");
+  }
+  throwIfError(error);
+  return data as PublicBookingResult;
 }
 
 export async function createAppointment(input: AppointmentInput) {
@@ -796,6 +894,11 @@ export async function updateLocation(id: string, input: LocationInput) {
   return data as Location;
 }
 
+export async function deleteLocation(id: string) {
+  const { error } = await supabase.rpc("delete_location_if_unused", { target_location_id: id });
+  throwIfError(error);
+}
+
 export async function createInsurancePlan(input: InsurancePlanInput) {
   const { data, error } = await supabase
     .from("insurance_plans")
@@ -838,10 +941,11 @@ export async function updateAvailability(id: string, input: MedicalAvailabilityI
   return data as MedicalAvailability;
 }
 
-export async function createHoliday(input: { date: string; name: string; kind: Holiday["kind"]; active?: boolean }) {
+export async function createHoliday(input: { date: string; name?: string; kind?: Holiday["kind"]; active?: boolean }) {
+  const kind = input.kind || "FERIADO";
   const { data, error } = await supabase
     .from("holidays")
-    .insert({ date: input.date, name: input.name.trim(), kind: input.kind, active: input.active ?? true })
+    .insert({ date: input.date, name: input.name?.trim() || "Feriado", kind, active: input.active ?? true })
     .select("*")
     .single();
   throwIfError(error);
@@ -851,7 +955,7 @@ export async function createHoliday(input: { date: string; name: string; kind: H
 export async function updateHoliday(id: string, input: { date: string; name: string; kind: Holiday["kind"]; active: boolean }) {
   const { data, error } = await supabase
     .from("holidays")
-    .update({ date: input.date, name: input.name.trim(), kind: input.kind, active: input.active })
+    .update({ date: input.date, name: input.name.trim() || "Feriado", kind: input.kind || "FERIADO", active: input.active })
     .eq("id", id)
     .select("*")
     .single();
@@ -877,7 +981,8 @@ export async function createProfile(input: ProfileInput) {
       full_name: formatProperName(input.full_name),
       role: input.role,
       location_id: input.role === "SECRETARIA" ? input.location_id : null,
-      active: input.active
+      active: input.active,
+      document_number: input.document_number?.replace(/\D/g, "") || null
     })
     .select("*, location:locations(*)")
     .single();
@@ -886,45 +991,20 @@ export async function createProfile(input: ProfileInput) {
 }
 
 export async function createUserWithLogin(input: NewUserInput) {
-  const email = input.email.trim().toLowerCase();
-  const fullName = formatProperName(input.full_name);
-  const locationId = input.role === "SECRETARIA" ? input.location_id || null : null;
-
-  const { data: created, error: createError } = await accountProvisioningClient.auth.signUp({
-    email,
-    password: input.password,
-    options: {
-      data: {
-        full_name: fullName,
-        requested_role: input.role
-      }
+  const { data, error } = await supabase.functions.invoke("admin-manage-user", {
+    body: {
+      action: "create_user",
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+      full_name: formatProperName(input.full_name),
+      role: input.role,
+      location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
+      document_number: input.document_number?.replace(/\D/g, "") || null
     }
   });
-  if (createError) throw new Error(authErrorMessage(createError));
-  if (!created.user) throw new Error("Supabase no devolvio el usuario creado.");
-  if (created.user.identities && created.user.identities.length === 0) {
-    throw new Error("Ese email ya tiene una cuenta de acceso.");
-  }
-
-  try {
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: created.user.id,
-        email,
-        full_name: fullName,
-        role: input.role,
-        location_id: locationId,
-        active: true
-      })
-      .select("*, location:locations(*)")
-      .single();
-
-    throwIfError(profileError);
-    return profile as Profile;
-  } finally {
-    if (created.session) await accountProvisioningClient.auth.signOut();
-  }
+  if (error) throw new Error("No se pudo crear el acceso. Verifica que la funcion admin-manage-user este publicada en Supabase.");
+  if (data?.error) throw new Error(data.error);
+  return data.profile as Profile;
 }
 
 export async function updateProfile(id: string, input: Omit<ProfileInput, "id">) {
@@ -935,11 +1015,32 @@ export async function updateProfile(id: string, input: Omit<ProfileInput, "id">)
       full_name: formatProperName(input.full_name),
       role: input.role,
       location_id: input.role === "SECRETARIA" ? input.location_id : null,
-      active: input.active
+      active: input.active,
+      document_number: input.document_number?.replace(/\D/g, "") || null
     })
     .eq("id", id)
     .select("*, location:locations(*)")
     .single();
   throwIfError(error);
   return data as Profile;
+}
+
+export async function setProfileActive(id: string, active: boolean) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ active })
+    .eq("id", id)
+    .select("*, location:locations(*)")
+    .single();
+  throwIfError(error);
+  return data as Profile;
+}
+
+export async function resetUserPasswordToDocument(userId: string) {
+  const { data, error } = await supabase.functions.invoke("admin-manage-user", {
+    body: { action: "reset_password", user_id: userId }
+  });
+  if (error) throw new Error("No se pudo ejecutar el blanqueo seguro. Verifica que la funcion admin-manage-user este publicada en Supabase.");
+  if (data?.error) throw new Error(data.error);
+  return data as { temporary_password: string };
 }

@@ -30,6 +30,9 @@ create table public.profiles (
   role public.user_role not null,
   location_id uuid references public.locations(id) on delete set null,
   active boolean not null default true,
+  is_master boolean not null default false,
+  must_change_password boolean not null default false,
+  document_number text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint secretary_requires_location check (
@@ -91,7 +94,7 @@ create table public.medical_availability (
 create table public.holidays (
   id uuid primary key default gen_random_uuid(),
   date date not null unique,
-  name text not null,
+  name text not null default 'Feriado',
   kind text not null default 'FERIADO' check (kind in ('FERIADO', 'VACACIONES', 'CONGRESO', 'LICENCIA', 'OTRO')),
   active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -283,6 +286,46 @@ as $$
   select public.current_role() = 'MEDICA_ADMIN';
 $$;
 
+create or replace function public.current_user_is_master()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and active and is_master
+  );
+$$;
+
+create or replace function public.delete_location_if_unused(target_location_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.current_user_is_master() then
+    raise exception 'Solo el usuario maestro puede eliminar consultorios.';
+  end if;
+
+  if exists (select 1 from public.profiles where location_id = target_location_id)
+    or exists (select 1 from public.patients where location_id = target_location_id)
+    or exists (select 1 from public.patient_locations where location_id = target_location_id)
+    or exists (select 1 from public.medical_availability where location_id = target_location_id)
+    or exists (select 1 from public.appointments where location_id = target_location_id)
+    or exists (select 1 from public.reports where location_id = target_location_id) then
+    raise exception 'El consultorio tiene usuarios, pacientes, horarios o turnos asociados. Debe darse de baja para conservar la historia.';
+  end if;
+
+  delete from public.locations where id = target_location_id;
+  if not found then raise exception 'Consultorio no encontrado.'; end if;
+end;
+$$;
+
+grant execute on function public.delete_location_if_unused(uuid) to authenticated;
+
 create or replace function public.is_secretary()
 returns boolean
 language sql
@@ -291,6 +334,37 @@ security definer
 set search_path = public
 as $$
   select public.current_role() = 'SECRETARIA';
+$$;
+
+create or replace function public.complete_password_change()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles set must_change_password = false, updated_at = now() where id = auth.uid();
+$$;
+
+grant execute on function public.complete_password_change() to authenticated;
+
+create or replace function public.protect_master_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' and old.is_master then raise exception 'El usuario maestro no puede eliminarse.'; end if;
+  if tg_op = 'UPDATE' then
+    if old.is_master and (
+      new.email is distinct from old.email or new.role is distinct from old.role
+      or new.location_id is distinct from old.location_id or new.active is distinct from old.active
+      or new.is_master is distinct from old.is_master
+    ) then raise exception 'Los privilegios del usuario maestro estan protegidos.'; end if;
+    if not old.is_master and new.is_master then raise exception 'No se puede crear otro usuario maestro.'; end if;
+  end if;
+  return coalesce(new, old);
+end;
 $$;
 
 create or replace function public.patient_visible(patient_location uuid)
@@ -485,6 +559,7 @@ end;
 $$;
 
 create trigger audit_patients after insert or update or delete on public.patients for each row execute function public.audit_row();
+create trigger protect_master_profile before update or delete on public.profiles for each row execute function public.protect_master_profile();
 create trigger audit_appointments after insert or update or delete on public.appointments for each row execute function public.audit_row();
 create trigger audit_studies after insert or update or delete on public.studies for each row execute function public.audit_row();
 create trigger audit_reports after insert or update or delete on public.reports for each row execute function public.audit_row();
@@ -517,7 +592,7 @@ create policy "profiles read own or admin" on public.profiles for select using (
 create policy "profiles admin write" on public.profiles for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "locations visible by role" on public.locations for select using (public.is_admin() or id = public.current_location_id());
-create policy "locations admin write" on public.locations for all using (public.is_admin()) with check (public.is_admin());
+create policy "locations master write" on public.locations for all using (public.current_user_is_master()) with check (public.current_user_is_master());
 
 create policy "insurance read all authenticated" on public.insurance_plans for select using (auth.uid() is not null);
 create policy "insurance admin write" on public.insurance_plans for all using (public.is_admin()) with check (public.is_admin());

@@ -23,6 +23,8 @@ supabase/
   schema.sql
   reset_for_retry.sql
   patch_existing_db.sql
+  master_and_passwords.sql
+  functions/admin-manage-user/index.ts
 ```
 
 ## Variables de entorno del frontend
@@ -74,6 +76,18 @@ Si ya tenes la base creada y solo queres aplicar mejoras sin borrar datos demo, 
 ```text
 supabase/patch_existing_db.sql
 ```
+
+Para la base que ya esta publicada, ejecutar despues y en este orden:
+
+```text
+supabase/fix_authentication.sql
+supabase/patient_uniqueness.sql
+supabase/master_and_passwords.sql
+supabase/master_consultorios_holidays.sql
+```
+
+El ultimo script protege como usuario maestro a `nas1710@gmail.com`: otro
+administrador no puede cambiarle rol, consultorio, estado ni privilegios.
 
 Ese SQL crea:
 
@@ -196,12 +210,27 @@ npm run dev
 
 Abrir la URL local de Vite.
 
-## Alta de usuarios desde la app
+## Alta y blanqueo de usuarios
 
-La medica/admin puede crear usuarios directamente desde **Usuarios**. La app usa
-un cliente de Supabase Auth aislado para no reemplazar la sesion de la medica y
-luego asigna el rol y el consultorio mediante RLS. Este flujo no requiere una
-Edge Function ni una `SUPABASE_SERVICE_ROLE_KEY` en el frontend.
+La medica/admin crea usuarios desde **Usuarios**. El alta confirma internamente
+el email y no depende del correo de confirmacion de Supabase. Al blanquear una
+clave, la contrasena provisoria pasa a ser el DNI del usuario y la app obliga a
+reemplazarla en el siguiente ingreso.
+
+Publicar la funcion segura desde una terminal con Supabase CLI:
+
+```bash
+supabase login
+supabase link --project-ref TU_PROJECT_REF
+supabase functions deploy admin-manage-user
+supabase secrets set "CORS_ORIGIN=https://cardioayala.vercel.app,http://localhost:5173"
+```
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` son provistas
+automaticamente por Supabase dentro de la Edge Function. La service role nunca
+se copia al frontend ni a Vercel.
+
+Antes de crear o blanquear usuarios, ejecutar `supabase/master_and_passwords.sql`.
 
 ## Deploy en Vercel Hobby Free
 
@@ -249,6 +278,38 @@ Si una secretaria ve datos de otra sede, revisar:
 - `profiles.location_id`
 - politicas RLS
 - que la tabla tenga `location_id` correcto
+
+## Turnos publicos sin login
+
+La pagina publica queda disponible en:
+
+```text
+https://cardioayala.vercel.app/turnos
+```
+
+Antes de publicar el frontend, ejecutar en Supabase SQL Editor y en este orden:
+
+```text
+supabase/patient_uniqueness.sql
+supabase/public_booking.sql
+```
+
+`public_booking.sql`:
+
+- vincula cada disponibilidad y cada turno con un profesional
+- asigna los horarios existentes al usuario maestro
+- publica solo nombres de profesionales y horarios libres
+- no permite leer pacientes ni turnos desde el acceso anonimo
+- vuelve a validar disponibilidad y superposiciones al confirmar
+- crea o vincula al paciente por tipo y numero de documento
+- registra el turno como `PENDIENTE`
+- limita solicitudes repetidas para un mismo documento
+
+Para que otra medica aparezca en la pagina publica debe estar activa, tener rol
+`MEDICA_ADMIN` y contar con al menos un horario de disponibilidad propio.
+
+El archivo `frontend/vercel.json` hace que Vercel sirva correctamente la ruta
+`/turnos` al abrirla o actualizarla directamente.
 
 ## Checklist RLS
 

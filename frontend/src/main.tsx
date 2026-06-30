@@ -11,8 +11,10 @@ import {
   createHoliday,
   createInsurancePlan,
   createLocation,
+  deleteLocation,
   createPatient,
   createUserWithLogin,
+  formatBirthDateInput,
   formatDocumentNumber,
   formatProperName,
   getConfiguration,
@@ -24,6 +26,8 @@ import {
   listAppointments,
   listAttachments,
   listPatients,
+  listPublicBookingDoctors,
+  listPublicBookingSlots,
   listProfiles,
   listReports,
   listStudies,
@@ -38,12 +42,19 @@ import {
   parseBirthDate,
   Profile,
   ProfileInput,
+  PublicBookingDoctor,
+  PublicBookingResult,
+  PublicBookingSlot,
   requestPasswordReset,
+  requestPublicBooking,
   requestUserAccess,
+  resetUserPasswordToDocument,
   resendConfirmationEmail,
   Report,
   signIn,
   signOut,
+  setPatientActive,
+  setProfileActive,
   Study,
   supabase,
   updateInsurancePlan,
@@ -55,7 +66,6 @@ import {
   updatePatientContact,
   updateProfile,
   uploadPatientAttachment,
-  deactivatePatient,
   createSignedAttachmentUrl,
   Attachment
 } from "./api/supabase";
@@ -88,16 +98,29 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 }
 
 function App() {
+  const publicBookingPath = window.location.pathname.replace(/\/+$/, "") === "/turnos";
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("inicio");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [newAppointmentKey, setNewAppointmentKey] = useState(0);
+  const [newPatientKey, setNewPatientKey] = useState(0);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [authLinkError, setAuthLinkError] = useState("");
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => {
+    if (publicBookingPath) {
+      setLoading(false);
+      return;
+    }
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    if (hashParams.get("error")) {
+      setAuthLinkError("El enlace de acceso vencio o ya fue utilizado. Volve a ingresar o solicita uno nuevo.");
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
     getCurrentProfile()
       .then(setProfile)
       .catch(async () => {
@@ -114,15 +137,20 @@ function App() {
       getCurrentProfile().then(setProfile).catch(() => setProfile(null));
     });
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [publicBookingPath]);
 
+  if (publicBookingPath) return <PublicBookingPage />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
   if (passwordRecovery) return <PasswordRecovery onDone={nextProfile => { setProfile(nextProfile); setPasswordRecovery(false); }} />;
-  if (!profile) return <Login onLogin={setProfile} />;
+  if (!profile) return <Login initialError={authLinkError} onLogin={setProfile} />;
+  if (profile.must_change_password) return <PasswordRecovery forced onDone={nextProfile => setProfile(nextProfile)} />;
 
   const navigate = (next: View) => {
     setView(next);
     setSelectedPatientId(null);
+    setNewAppointmentKey(0);
+    setNewPatientKey(0);
+    setMobileMoreOpen(false);
     setViewResetKey(key => key + 1);
   };
 
@@ -130,7 +158,16 @@ function App() {
     setView("agenda");
     setSelectedPatientId(null);
     setViewResetKey(key => key + 1);
-    setNewAppointmentKey(key => key + 1);
+    setNewAppointmentKey(Date.now());
+    setMobileMoreOpen(false);
+  };
+
+  const navigateNewPatient = () => {
+    setView("pacientes");
+    setSelectedPatientId(null);
+    setViewResetKey(key => key + 1);
+    setNewPatientKey(Date.now());
+    setMobileMoreOpen(false);
   };
 
   return (
@@ -160,12 +197,22 @@ function App() {
           <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
           {profile.role === "MEDICA_ADMIN" && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Roles y consultorios" onClick={() => navigate("usuarios")} />}
         </nav>
+        <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
+          <span className="nav-icon">MA</span><span>Mas</span>
+        </button>
+        {mobileMoreOpen && <div className="mobile-more-menu">
+          <button onClick={() => navigate("estudios")}>Estudios y documentos</button>
+          <button onClick={() => navigate("tareas")}>Tareas</button>
+          <button onClick={() => navigate("ajustes")}>Ajustes</button>
+          {profile.role === "MEDICA_ADMIN" && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
+          <button className="danger-action" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
+        </div>}
         <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
       </aside>
       <main>
-        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={profile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={profile} selectedId={selectedPatientId} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
+        {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={profile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
@@ -175,12 +222,196 @@ function App() {
   );
 }
 
-function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
+function PublicBookingPage() {
+  const today = toDateInputValue(new Date());
+  const maxDateValue = new Date();
+  maxDateValue.setDate(maxDateValue.getDate() + 90);
+  const [doctors, setDoctors] = useState<PublicBookingDoctor[]>([]);
+  const [doctorId, setDoctorId] = useState("");
+  const [types, setTypes] = useState<AppointmentTypeCode[]>(["CONSULTA"]);
+  const [date, setDate] = useState(today);
+  const [slots, setSlots] = useState<PublicBookingSlot[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<PublicBookingSlot | null>(null);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<PublicBookingResult | null>(null);
+  const [patient, setPatient] = useState({
+    first_name: "",
+    last_name: "",
+    document_type: "DNI" as IdentityDocumentType,
+    document: "",
+    birth_date: "",
+    phone: "",
+    email: "",
+    website: ""
+  });
+  const duration = publicBookingDuration(types);
+
+  useEffect(() => {
+    listPublicBookingDoctors()
+      .then(items => {
+        setDoctors(items);
+        if (items.length === 1) setDoctorId(items[0].id);
+      })
+      .catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda publica."))
+      .finally(() => setLoadingCatalog(false));
+  }, []);
+
+  useEffect(() => {
+    setSelectedSlot(null);
+    if (!doctorId || !date || types.length === 0) {
+      setSlots([]);
+      return;
+    }
+    setLoadingSlots(true);
+    setError("");
+    let cancelled = false;
+    listPublicBookingSlots(doctorId, date, duration)
+      .then(items => { if (!cancelled) setSlots(items); })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudieron consultar los horarios."); })
+      .finally(() => { if (!cancelled) setLoadingSlots(false); });
+    return () => { cancelled = true; };
+  }, [doctorId, date, duration]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!doctorId) return setError("Elegir profesional.");
+    if (!selectedSlot) return setError("Elegir un horario disponible.");
+    if (!patient.first_name.trim() || !patient.last_name.trim()) return setError("Nombre y apellido son obligatorios.");
+    if (!normalizeDocumentNumber(patient.document_type, patient.document)) return setError("Ingresar el numero de documento.");
+    try {
+      parseBirthDate(patient.birth_date);
+    } catch (err) {
+      return setError(err instanceof Error ? err.message : "Fecha de nacimiento invalida.");
+    }
+    if (!patient.phone.trim() && !patient.email.trim()) return setError("Ingresar telefono o email para poder confirmar el turno.");
+
+    setSaving(true);
+    setError("");
+    try {
+      const booking = await requestPublicBooking({
+        doctor_id: doctorId,
+        starts_at: selectedSlot.starts_at,
+        types,
+        ...patient
+      });
+      setResult(booking);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo solicitar el turno.");
+      setSelectedSlot(null);
+      const refreshed = await listPublicBookingSlots(doctorId, date, duration).catch(() => []);
+      setSlots(refreshed);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (result) {
+    const startsAt = new Date(result.starts_at);
+    return (
+      <div className="public-booking-page">
+        <header className="public-booking-header"><span className="brand">SP</span><div><strong>Cardio Ayala</strong><small>Turnos online</small></div></header>
+        <main className="public-booking-main confirmation-view">
+          <section className="public-confirmation">
+            <span className="confirmation-mark">OK</span>
+            <h1>Solicitud recibida</h1>
+            <p>El consultorio revisara la solicitud y confirmara el turno por tus datos de contacto.</p>
+            <dl>
+              <div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div>
+              <div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div>
+              <div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</dd></div>
+              <div><dt>Consultorio</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div>
+              <div><dt>Estado</dt><dd>Pendiente de confirmacion</dd></div>
+            </dl>
+            <button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="public-booking-page">
+      <header className="public-booking-header">
+        <span className="brand">SP</span>
+        <div><strong>Cardio Ayala</strong><small>Turnos online</small></div>
+        <a href="/">Acceso profesionales</a>
+      </header>
+      <main className="public-booking-main">
+        <div className="public-booking-title">
+          <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Elegí profesional, práctica y un horario disponible.</p></div>
+          <ol><li className="active">Agenda</li><li className={selectedSlot ? "active" : ""}>Datos</li><li>Confirmación</li></ol>
+        </div>
+
+        <form className="public-booking-layout" onSubmit={submit}>
+          <section className="public-booking-agenda">
+            <div className="booking-section-head"><span>1</span><div><h2>Profesional y práctica</h2><p>El consultorio se asigna automáticamente.</p></div></div>
+            {loadingCatalog ? <p className="empty-day">Cargando profesionales...</p> : (
+              <div className="doctor-options">
+                {doctors.map(doctor => (
+                  <button type="button" key={doctor.id} className={doctorId === doctor.id ? "doctor-option selected" : "doctor-option"} onClick={() => setDoctorId(doctor.id)}>
+                    <span className="avatar">{doctor.full_name.slice(0, 2).toUpperCase()}</span><span><strong>{doctor.full_name}</strong><small>{doctor.specialty}</small></span>
+                  </button>
+                ))}
+                {!loadingCatalog && doctors.length === 0 && <p className="notice">Todavia no hay profesionales con horarios publicados.</p>}
+              </div>
+            )}
+            <AppointmentTypePicker value={types} onChange={setTypes} />
+
+            <div className="booking-section-head"><span>2</span><div><h2>Fecha y horario</h2><p>Solo se muestran turnos realmente disponibles.</p></div></div>
+            <label className="public-date-field">Fecha
+              <input type="date" min={today} max={toDateInputValue(maxDateValue)} value={date} onChange={event => setDate(event.target.value)} />
+            </label>
+            <div className="public-slot-grid">
+              {loadingSlots && <p className="empty-day">Buscando horarios...</p>}
+              {!loadingSlots && doctorId && slots.map(slot => {
+                const value = new Date(slot.starts_at);
+                return <button type="button" key={`${slot.starts_at}-${slot.location_id}`} className={selectedSlot?.starts_at === slot.starts_at ? "public-slot selected" : "public-slot"} onClick={() => setSelectedSlot(slot)}>
+                  <strong>{value.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</strong>
+                  <small>{slot.location_name}</small>
+                </button>;
+              })}
+              {!loadingSlots && doctorId && slots.length === 0 && <p className="empty-day">No hay horarios libres para esta fecha. Probá otro día.</p>}
+              {!doctorId && <p className="empty-day">Elegí un profesional para ver horarios.</p>}
+            </div>
+          </section>
+
+          <section className={`public-patient-form ${selectedSlot ? "ready" : ""}`}>
+            <div className="booking-section-head"><span>3</span><div><h2>Tus datos</h2><p>Los usamos solamente para identificarte y confirmar el turno.</p></div></div>
+            {selectedSlot && <div className="selected-public-slot"><strong>{new Date(selectedSlot.starts_at).toLocaleDateString("es-AR")} · {new Date(selectedSlot.starts_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</strong><span>{selectedSlot.location_name}</span></div>}
+            <div className="public-patient-grid">
+              <label>Nombre<input value={patient.first_name} onChange={event => setPatient({ ...patient, first_name: event.target.value })} onBlur={() => setPatient(current => ({ ...current, first_name: formatProperName(current.first_name) }))} /></label>
+              <label>Apellido<input value={patient.last_name} onChange={event => setPatient({ ...patient, last_name: event.target.value })} onBlur={() => setPatient(current => ({ ...current, last_name: formatProperName(current.last_name) }))} /></label>
+              <label>Tipo de documento<select value={patient.document_type} onChange={event => setPatient({ ...patient, document_type: event.target.value as IdentityDocumentType, document: "" })}>{documentTypeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+              <label>Numero de documento<input value={formatDocumentNumber(patient.document_type, patient.document, "")} onChange={event => setPatient({ ...patient, document: normalizeDocumentNumber(patient.document_type, event.target.value) })} inputMode="numeric" /></label>
+              <label>Fecha de nacimiento<input value={patient.birth_date} onChange={event => setPatient({ ...patient, birth_date: formatBirthDateInput(event.target.value) })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
+              <label>WhatsApp<input value={patient.phone} onChange={event => setPatient({ ...patient, phone: event.target.value })} placeholder="549..." inputMode="tel" /></label>
+              <label className="full-field">Email<input type="email" value={patient.email} onChange={event => setPatient({ ...patient, email: event.target.value })} /></label>
+              <label className="booking-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={patient.website} onChange={event => setPatient({ ...patient, website: event.target.value })} /></label>
+            </div>
+            {error && <p className="error public-booking-error">{error}</p>}
+            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Enviando solicitud..." : "Solicitar turno"}</button>
+            <small className="privacy-copy">La solicitud queda pendiente hasta que el consultorio la confirme.</small>
+          </section>
+        </form>
+      </main>
+    </div>
+  );
+}
+
+function publicBookingDuration(types: AppointmentTypeCode[]) {
+  return types.reduce((total, type) => total + (type === "CONSULTA" || type === "ELECTROCARDIOGRAMA" ? 15 : 30), 0);
+}
+
+function Login({ initialError = "", onLogin }: { initialError?: string; onLogin: (profile: Profile) => void }) {
   const [mode, setMode] = useState<"login" | "request" | "reset">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
   const [message, setMessage] = useState("");
   const [resending, setResending] = useState(false);
   const needsEmailConfirmation = error.includes("confirma tu email");
@@ -253,6 +484,7 @@ function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
         ) : error ? <p className="error login-error">{error}</p> : null}
         {message && <p className="notice ok-notice">{message}</p>}
         <button className="primary">{mode === "login" ? "Ingresar" : mode === "request" ? "Solicitar acceso" : "Enviar recuperacion"}</button>
+        {mode === "login" && <a className="public-booking-login-link" href="/turnos">Solicitar un turno online</a>}
         {mode === "login" && (
           <div className="login-secondary-actions">
             <button type="button" className="link" onClick={() => setMode("reset")}>Olvide mi contrasena</button>
@@ -264,7 +496,7 @@ function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
   );
 }
 
-function PasswordRecovery({ onDone }: { onDone: (profile: Profile) => void }) {
+function PasswordRecovery({ forced = false, onDone }: { forced?: boolean; onDone: (profile: Profile) => void }) {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [saving, setSaving] = useState(false);
@@ -293,7 +525,7 @@ function PasswordRecovery({ onDone }: { onDone: (profile: Profile) => void }) {
       <form onSubmit={submit} className="panel login-panel">
         <div className="login-brand">
           <span>SP</span>
-          <div><h1>Nueva contrasena</h1><p>Elegí una clave personal para tu cuenta</p></div>
+          <div><h1>{forced ? "Cambia tu clave provisoria" : "Nueva contrasena"}</h1><p>Elegi una clave personal para tu cuenta</p></div>
         </div>
         <label>Nueva contrasena<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" /></label>
         <label>Repetir contrasena<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" /></label>
@@ -305,7 +537,7 @@ function PasswordRecovery({ onDone }: { onDone: (profile: Profile) => void }) {
   );
 }
 
-function Dashboard({ onNavigate, onOpenPatient }: { onNavigate: (view: View) => void; onOpenPatient: (id: string) => void }) {
+function Dashboard({ onNavigate, onNewPatient, onOpenPatient }: { onNavigate: (view: View) => void; onNewPatient: () => void; onOpenPatient: (id: string) => void }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -342,7 +574,7 @@ function Dashboard({ onNavigate, onOpenPatient }: { onNavigate: (view: View) => 
       actions={
         <>
           <button className="secondary-action" onClick={() => onNavigate("agenda")}>Ver agenda</button>
-          <button className="primary" onClick={() => onNavigate("pacientes")}>+ Nuevo paciente</button>
+          <button className="primary" onClick={onNewPatient}>+ Nuevo paciente</button>
         </>
       }
     >
@@ -495,10 +727,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
   }
 
   function handleSlotClick(slot: AgendaSlot) {
-    if (mode === "dia") {
-      setSelectedAgendaKey(slot.key);
-      return;
-    }
+    setSelectedAgendaKey(slot.key);
     if (slot.appointment) {
       openEditAppointment(slot.appointment);
       return;
@@ -570,16 +799,19 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
             }}
           />
         </div>
-        <div className="agenda-legend" aria-label="Referencias de agenda">
-          <span><i className="legend-dot free"></i>Libre</span>
-          <span><i className="legend-dot confirmed"></i>Confirmado</span>
-          <span><i className="legend-dot pending"></i>Pendiente</span>
-          <span><i className="legend-dot reminder"></i>Recordatorio</span>
-          <span><i className="legend-dot absent"></i>Ausente</span>
-        </div>
-        <div className="type-legend" aria-label="Motivos del turno">
-          {appointmentTypeOptions().map(option => <span className={`type-label ${appointmentTypeClass(option.value)}`} key={option.value}>{option.label}</span>)}
-        </div>
+        <details className="agenda-references">
+          <summary>Referencias de colores</summary>
+          <div className="agenda-legend" aria-label="Estados de los turnos">
+            <span><i className="legend-dot free"></i>Horario libre</span>
+            <span><i className="legend-dot confirmed"></i>Confirmado</span>
+            <span><i className="legend-dot pending"></i>Pendiente</span>
+            <span><i className="legend-dot reminder"></i>Recordatorio enviado</span>
+            <span><i className="legend-dot absent"></i>Ausente</span>
+          </div>
+          <div className="type-legend" aria-label="Motivos del turno">
+            {appointmentTypeOptions().map(option => <span className={`type-label ${appointmentTypeClass(option.value)}`} key={option.value}>{option.label}</span>)}
+          </div>
+        </details>
       </div>
 
       <div className={mode === "dia" ? "agenda-board day-board" : "agenda-board"}>
@@ -793,9 +1025,13 @@ function hasAvailabilityOnDate(date: Date, availability: MedicalAvailability[] =
   );
 }
 
-function isHoliday(date: Date, holidays: Holiday[] = []) {
+function isHoliday(date: Date, holidays: Holiday[] = [], doctorId?: string | null) {
   const value = toDateInputValue(date);
-  return (holidays || []).some(holiday => holiday.active && holiday.date === value);
+  return (holidays || []).some(holiday => {
+    if (!holiday.active || holiday.date !== value) return false;
+    if (doctorId === undefined) return true;
+    return !holiday.doctor_id || holiday.doctor_id === doctorId;
+  });
 }
 
 function appointmentStatusLabel(status: AppointmentStatus) {
@@ -937,12 +1173,14 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
   );
 }
 
-function Patients({ profile, selectedId, onSelect, onClose }: { profile: Profile; selectedId: string | null; onSelect: (id: string) => void; onClose: () => void }) {
+function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { profile: Profile; selectedId: string | null; openNewKey?: number; onSelect: (id: string) => void; onClose: () => void }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [detail, setDetail] = useState<Patient | null>(null);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("activos");
+  const [statusError, setStatusError] = useState("");
 
   async function refresh() {
     setPatients(await listPatients(query));
@@ -950,8 +1188,25 @@ function Patients({ profile, selectedId, onSelect, onClose }: { profile: Profile
 
   useEffect(() => { refresh(); }, [query]);
   useEffect(() => { selectedId ? getPatient(selectedId).then(setDetail) : setDetail(null); }, [selectedId]);
+  useEffect(() => { if (openNewKey) setShowForm(true); }, [openNewKey]);
 
   if (selectedId && detail) return <PatientChart patient={detail} profile={profile} notice={patientNotice} onBack={() => { setPatientNotice(""); onClose(); }} />;
+
+  const visiblePatients = patients.filter(patient => {
+    if (statusFilter === "activos") return patient.status !== "baja";
+    if (statusFilter === "inactivos") return patient.status === "baja";
+    return true;
+  });
+
+  async function togglePatient(patient: Patient) {
+    setStatusError("");
+    try {
+      await setPatientActive(patient.id, patient.status === "baja");
+      await refresh();
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "No se pudo cambiar el estado del paciente.");
+    }
+  }
 
   return (
     <Page title="Pacientes" subtitle="Buscar y abrir ficha clinica" actions={<button className="primary" onClick={() => setShowForm(value => !value)}>+ Nuevo paciente</button>}>
@@ -961,23 +1216,32 @@ function Patients({ profile, selectedId, onSelect, onClose }: { profile: Profile
         await refresh();
         onSelect(patient.id);
       }} />}
-      <input className="search" placeholder="Nombre, documento o telefono" value={query} onChange={e => setQuery(e.target.value)} />
-      <div className="list">
-        {patients.filter(p => p.status !== "baja").map(p => (
-          <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} />
+      <div className="patient-list-toolbar">
+        <input className="search" placeholder="Nombre, documento o telefono" value={query} onChange={e => setQuery(e.target.value)} />
+        <div className="segmented status-filter" aria-label="Filtrar pacientes">
+          <button className={statusFilter === "activos" ? "active" : ""} onClick={() => setStatusFilter("activos")}>Activos</button>
+          <button className={statusFilter === "inactivos" ? "active" : ""} onClick={() => setStatusFilter("inactivos")}>Inactivos</button>
+          <button className={statusFilter === "todos" ? "active" : ""} onClick={() => setStatusFilter("todos")}>Todos</button>
+        </div>
+      </div>
+      {statusError && <p className="error">{statusError}</p>}
+      <div className="list patient-list">
+        {visiblePatients.map(p => (
+          <PatientSearchCard key={p.id} patient={p} onOpen={() => { setPatientNotice(""); onSelect(p.id); }} onToggle={() => void togglePatient(p)} />
         ))}
+        {visiblePatients.length === 0 && <p className="empty-day">No hay pacientes en esta vista.</p>}
       </div>
     </Page>
   );
 }
 
-function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () => void }) {
+function PatientSearchCard({ patient, onOpen, onToggle }: { patient: Patient; onOpen: () => void; onToggle: () => void }) {
   const lastVisit = getLastPatientVisit(patient);
   const whatsapp = buildWhatsappUrl(patient.phone, `Hola ${patient.first_name}, le escribimos del consultorio.`);
   const mail = patient.email ? `mailto:${patient.email}?subject=${encodeURIComponent("Consultorio cardiologia")}` : "";
 
   return (
-    <article className="patient-card">
+    <article className={`patient-card ${patient.status === "baja" ? "is-inactive" : ""}`}>
       <div className="patient-card-main">
         <button className="patient-identity" onClick={onOpen}>
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
@@ -994,8 +1258,13 @@ function PatientSearchCard({ patient, onOpen }: { patient: Patient; onOpen: () =
       </div>
 
       <div className="quick-actions">
+        <button className="open-patient" onClick={onOpen}>Abrir historia</button>
         <a className={patient.phone ? "" : "disabled-link"} href={whatsapp || undefined} target="_blank" rel="noreferrer">Enviar WhatsApp</a>
         <a className={patient.email ? "" : "disabled-link"} href={mail || undefined}>Enviar email</a>
+        <label className="status-switch">
+          <input type="checkbox" checked={patient.status !== "baja"} onChange={onToggle} />
+          <span>{patient.status === "baja" ? "Inactivo" : "Activo"}</span>
+        </label>
       </div>
     </article>
   );
@@ -1167,7 +1436,7 @@ function PatientForm({ profile, onCreated }: { profile: Profile; onCreated: (pat
         <label>Nombre<input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, first_name: formatProperName(current.first_name) }))} /></label>
         <label>Apellido<input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, last_name: formatProperName(current.last_name) }))} /></label>
         <IdentityDocumentFields value={form} onChange={setForm} />
-        <label>Fecha nacimiento<input value={form.birth_date} onChange={e => setForm({ ...form, birth_date: e.target.value })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
+        <label>Fecha nacimiento<input value={form.birth_date} onChange={e => setForm({ ...form, birth_date: formatBirthDateInput(e.target.value) })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
         <label>Telefono WhatsApp<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="549..." /></label>
         <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
         <InsurancePlanPicker
@@ -1242,6 +1511,7 @@ function AppointmentForm({
   }, []);
 
   const activeLocations = (config?.locations || []).filter(location => location.active && (profile.role === "MEDICA_ADMIN" || location.id === profile.location_id));
+  const selectedLocation = activeLocations.find(location => location.id === selectedLocationId) || null;
   const availableSlots = getEligibleAvailability(profile, config?.availability || []).filter(slot => slot.location_id === selectedLocationId);
   const matchingAvailability = findAvailabilityForAppointment(form.starts_at, form.duration_min, availableSlots);
   const availabilityMessage = getAvailabilityMessage(form.starts_at, form.duration_min, availableSlots);
@@ -1301,12 +1571,12 @@ function AppointmentForm({
         <button type="button" className={patientMode === "nuevo" ? "active" : ""} onClick={() => setPatientMode("nuevo")}>Paciente nuevo</button>
       </div>
       <div className="form-grid">
-        <label>Consultorio
+        {!initial ? <label>Agenda / consultorio
           <select value={selectedLocationId} onChange={e => { setSelectedLocationId(e.target.value); setForm({ ...form, starts_at: "", location_id: e.target.value }); setNewPatient({ ...newPatient, location_id: e.target.value }); }} disabled={profile.role === "SECRETARIA"}>
-            <option value="">Elegir consultorio</option>
+            <option value="">Elegir agenda</option>
             {activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
-        </label>
+        </label> : <div className="locked-agenda"><span>Agenda</span><strong>{selectedLocation?.name || "Consultorio asignado"}</strong></div>}
         <label>Fecha<input type="date" value={selectedDate} onChange={e => { setSelectedDate(e.target.value); setForm({ ...form, starts_at: "" }); }} /></label>
         <AppointmentTypePicker value={form.types} onChange={types => setForm({ ...form, types })} />
         <label>Duracion
@@ -1330,7 +1600,7 @@ function AppointmentForm({
               key={slot.key}
               type="button"
               className={slot.appointment ? "pick-slot occupied" : form.starts_at === slot.startsAt ? "pick-slot selected" : "pick-slot free"}
-              onClick={() => slot.appointment ? undefined : chooseFreeSlot(slot.startsAt)}
+              onClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot.startsAt)}
               onDoubleClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot.startsAt, true)}
               title={slot.appointment ? "Doble click para editar este turno" : "Doble click para elegir paciente"}
             >
@@ -1356,7 +1626,7 @@ function AppointmentForm({
           <label>Nombre<input value={newPatient.first_name} onChange={e => setNewPatient({ ...newPatient, first_name: e.target.value })} onBlur={() => setNewPatient(current => ({ ...current, first_name: formatProperName(current.first_name) }))} /></label>
           <label>Apellido<input value={newPatient.last_name} onChange={e => setNewPatient({ ...newPatient, last_name: e.target.value })} onBlur={() => setNewPatient(current => ({ ...current, last_name: formatProperName(current.last_name) }))} /></label>
           <IdentityDocumentFields value={newPatient} onChange={setNewPatient} />
-          <label>Fecha nacimiento<input value={newPatient.birth_date} onChange={e => setNewPatient({ ...newPatient, birth_date: e.target.value })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
+          <label>Fecha nacimiento<input value={newPatient.birth_date} onChange={e => setNewPatient({ ...newPatient, birth_date: formatBirthDateInput(e.target.value) })} placeholder="dd/mm/yyyy" inputMode="numeric" maxLength={10} /></label>
           <label>Telefono WhatsApp<input value={newPatient.phone} onChange={e => setNewPatient({ ...newPatient, phone: e.target.value })} placeholder="549..." /></label>
           <label>Email<input value={newPatient.email} onChange={e => setNewPatient({ ...newPatient, email: e.target.value })} /></label>
           <InsurancePlanPicker
@@ -1483,7 +1753,12 @@ function AppointmentEditForm({
 }
 
 function getEligibleAvailability(profile: Profile, slots: MedicalAvailability[]) {
-  return slots.filter(slot => slot.enabled && (profile.role === "MEDICA_ADMIN" || slot.location_id === profile.location_id));
+  return slots.filter(slot => {
+    if (!slot.enabled) return false;
+    if (profile.role === "SECRETARIA") return slot.location_id === profile.location_id;
+    if (profile.is_master) return true;
+    return !slot.doctor_id || slot.doctor_id === profile.id;
+  });
 }
 
 type AvailabilityMatch =
@@ -1603,9 +1878,10 @@ type AgendaSlot = {
 };
 
 function buildAgendaSlots(day: Date, availability: MedicalAvailability[], appointments: Appointment[], profile: Profile, holidays: Holiday[] = []): AgendaSlot[] {
-  if (isHoliday(day, holidays)) return [];
+  if (isHoliday(day, holidays, null)) return [];
   const slots = availability
     .filter(slot => slot.enabled && slot.weekday === day.getDay())
+    .filter(slot => !isHoliday(day, holidays, slot.doctor_id))
     .filter(slot => profile.role === "MEDICA_ADMIN" || slot.location_id === profile.location_id)
     .flatMap(slot => {
       const start = timeToMinutes(slot.start_time);
@@ -1615,7 +1891,7 @@ function buildAgendaSlots(day: Date, availability: MedicalAvailability[], appoin
       for (let minute = start; minute < end; minute += interval) {
         const date = new Date(day);
         date.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-        const appointment = appointments.find(item => item.status !== "CANCELADO" && item.location_id === slot.location_id && minutesOverlap(date, interval, new Date(item.starts_at), item.duration_min));
+        const appointment = appointments.find(item => item.status !== "CANCELADO" && item.location_id === slot.location_id && (!item.doctor_id || !slot.doctor_id || item.doctor_id === slot.doctor_id) && minutesOverlap(date, interval, new Date(item.starts_at), item.duration_min));
         items.push({
           key: `${slot.id}-${minute}`,
           time: `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`,
@@ -1648,7 +1924,7 @@ function buildLocationDaySlots(selectedDate: string, locationId: string, availab
       for (let minute = start; minute < end; minute += interval) {
         const date = new Date(day);
         date.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-        const appointment = dayAppointments.find(item => minutesOverlap(date, interval, new Date(item.starts_at), item.duration_min));
+        const appointment = dayAppointments.find(item => (!item.doctor_id || !slot.doctor_id || item.doctor_id === slot.doctor_id) && minutesOverlap(date, interval, new Date(item.starts_at), item.duration_min));
         items.push({
           key: `${slot.id}-${minute}`,
           time: `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`,
@@ -1695,10 +1971,14 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
     setCurrentPatient(await getPatient(patient.id));
   }
 
-  async function deactivate() {
-    if (!window.confirm("Dar de baja este paciente? No se borra la historia, solo queda inactivo.")) return;
-    await deactivatePatient(currentPatient.id);
-    onBack();
+  async function togglePatientStatus() {
+    const activate = currentPatient.status === "baja";
+    const question = activate
+      ? "Reactivar este paciente?"
+      : "Dar de baja este paciente? No se borra la historia, solo queda inactivo.";
+    if (!window.confirm(question)) return;
+    await setPatientActive(currentPatient.id, activate);
+    await refresh();
   }
 
   return (
@@ -1720,7 +2000,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
         <button className={panel === "adjuntos" ? "primary" : "secondary-action"} onClick={() => setPanel("adjuntos")}>Adjuntar estudio</button>
         <button className={panel === "enviar" ? "primary" : "secondary-action"} onClick={() => setPanel("enviar")}>Enviar documentos</button>
         <button className={panel === "nota" ? "primary" : "secondary-action"} onClick={() => setPanel("nota")}>Nota administrativa</button>
-        {profile.role === "MEDICA_ADMIN" && <button className="danger-action" onClick={deactivate}>Dar de baja</button>}
+        {profile.role === "MEDICA_ADMIN" && <button className={currentPatient.status === "baja" ? "primary" : "danger-action"} onClick={() => void togglePatientStatus()}>{currentPatient.status === "baja" ? "Reactivar paciente" : "Dar de baja"}</button>}
       </div>
 
       <section className="summary">
@@ -2401,10 +2681,10 @@ function Settings({ profile }: { profile: Profile }) {
   useEffect(() => { refresh(); }, []);
   return (
     <Page title="Ajustes" subtitle="Consultorios, obras sociales y usuarios">
-      {profile.role !== "MEDICA_ADMIN" && <p className="notice">Solo la medica/admin puede modificar consultorios, obras sociales y usuarios.</p>}
+      {profile.role !== "MEDICA_ADMIN" && <p className="notice">Solo la medica/admin puede modificar horarios, feriados, obras sociales y usuarios.</p>}
       {data && (
         <div className="admin-grid">
-          <LocationManager locations={data.locations} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
+          <LocationManager locations={data.locations} canEdit={profile.is_master} onSaved={refresh} />
           <InsuranceManager plans={data.insurancePlans} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
           <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
           <HolidayManager holidays={data.holidays} canEdit={profile.role === "MEDICA_ADMIN"} onSaved={refresh} />
@@ -2452,6 +2732,7 @@ function LocationManager({ locations, canEdit, onSaved }: { locations: Location[
   return (
     <section className="panel admin-section">
       <h2>Consultorios</h2>
+      {!canEdit && <p className="notice">Solo el usuario maestro puede crear, editar o eliminar consultorios.</p>}
       {canEdit && (
         <form className="mini-form" onSubmit={submit}>
           <input placeholder="Nombre del consultorio" value={name} onChange={e => setName(e.target.value)} />
@@ -2470,6 +2751,19 @@ function LocationManager({ locations, canEdit, onSaved }: { locations: Location[
 function LocationRow({ location, canEdit, onSaved }: { location: Location; canEdit: boolean; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address || "");
+  const [error, setError] = useState("");
+
+  async function remove() {
+    if (!window.confirm(`Eliminar definitivamente el consultorio "${location.name}"?`)) return;
+    setError("");
+    try {
+      await deleteLocation(location.id);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el consultorio.");
+    }
+  }
+
   return (
     <div className="editable-row">
       <input value={name} onChange={e => setName(e.target.value)} disabled={!canEdit} />
@@ -2479,8 +2773,10 @@ function LocationRow({ location, canEdit, onSaved }: { location: Location; canEd
         <div className="row-actions">
           <button onClick={async () => { await updateLocation(location.id, { name, address, active: location.active }); await onSaved(); }}>Guardar</button>
           <button onClick={async () => { await updateLocation(location.id, { name, address, active: !location.active }); await onSaved(); }}>{location.active ? "Dar de baja" : "Reactivar"}</button>
+          <button className="danger-action" onClick={() => void remove()}>Eliminar</button>
         </div>
       )}
+      {error && <small className="error location-row-error">{error}</small>}
     </div>
   );
 }
@@ -2694,11 +2990,15 @@ function HolidayManager({ holidays, canEdit, onSaved }: { holidays: Holiday[]; c
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!date) return setError("Elegir fecha.");
-    if (!name.trim()) return setError("Escribir motivo del dia no laborable.");
     setError("");
-    await createHoliday({ date, name, kind, active: true });
-    setName("");
-    await onSaved();
+    try {
+      await createHoliday({ date, name: name.trim() || "Feriado", kind, active: true });
+      setName("");
+      setKind("FERIADO");
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo agregar el dia no laborable.");
+    }
   }
 
   return (
@@ -2715,7 +3015,7 @@ function HolidayManager({ holidays, canEdit, onSaved }: { holidays: Holiday[]; c
             <option value="LICENCIA">Licencia</option>
             <option value="OTRO">Otro</option>
           </select>
-          <input placeholder="Motivo. Ej: vacaciones medica, feriado nacional" value={name} onChange={e => setName(e.target.value)} />
+          <input placeholder="Etiqueta opcional (por defecto: Feriado)" value={name} onChange={e => setName(e.target.value)} />
           {error && <p className="error">{error}</p>}
           <button className="primary">Agregar bloqueo</button>
         </form>
@@ -2756,14 +3056,17 @@ function HolidayRow({ holiday, canEdit, onSaved }: { holiday: Holiday; canEdit: 
 }
 
 function UserManager({ users, locations, onSaved }: { users: Profile[]; locations: Location[]; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "" });
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "" });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("activos");
+  const visibleUsers = users.filter(user => statusFilter === "todos" || (statusFilter === "activos" ? user.active : !user.active));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.email.trim() || !form.password.trim() || !form.full_name.trim()) return setError("Email, contrasena y nombre son obligatorios.");
+    if (form.document_number.replace(/\D/g, "").length < 6) return setError("Carga el DNI del usuario para poder blanquear su acceso.");
     if (form.password.length < 8) return setError("La contrasena debe tener al menos 8 caracteres.");
     if (form.role === "SECRETARIA" && !form.location_id) return setError("La secretaria debe tener un consultorio.");
     setError("");
@@ -2771,7 +3074,7 @@ function UserManager({ users, locations, onSaved }: { users: Profile[]; location
     setSaving(true);
     try {
       const created = await createUserWithLogin(form);
-      setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "" });
+      setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "" });
       await onSaved();
       setMessage(`${created.full_name} fue dada de alta. Ya puede ingresar; si recibe un email de confirmacion, debe abrirlo primero.`);
     } catch (err) {
@@ -2782,13 +3085,17 @@ function UserManager({ users, locations, onSaved }: { users: Profile[]; location
   }
 
   return (
-    <section className="panel admin-section wide">
-      <h2>Usuarios</h2>
-      <p className="notice">Crea el acceso, asigna el rol y el consultorio. Para blanquear una clave se envia un enlace seguro al email del usuario; la medica nunca necesita conocer su nueva contrasena.</p>
-      <form className="form-grid" onSubmit={submit}>
+    <section className="panel admin-section wide user-manager">
+      <div className="section-title"><div><h2>Usuarios</h2><p>{users.filter(user => user.active).length} activos · {users.length} totales</p></div></div>
+      <details className="user-create-panel">
+        <summary>+ Nuevo usuario</summary>
+        <div className="user-create-content">
+        <p className="notice">El DNI se usa como clave provisoria al blanquear el acceso. En el siguiente ingreso debe elegir una contrasena personal.</p>
+        <form className="form-grid" onSubmit={submit}>
         <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
         <label>Contrasena inicial<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label>
         <label>Nombre<input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, full_name: formatProperName(current.full_name) }))} /></label>
+        <label>DNI del usuario<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={e => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", e.target.value) })} inputMode="numeric" /></label>
         <label>Rol
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as ProfileInput["role"], location_id: e.target.value === "SECRETARIA" ? form.location_id : "" })}>
             <option value="SECRETARIA">Secretaria</option>
@@ -2804,9 +3111,20 @@ function UserManager({ users, locations, onSaved }: { users: Profile[]; location
         {error && <p className="error">{error}</p>}
         {message && <p className="notice ok-notice">{message}</p>}
         <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Creando..." : "Crear usuario"}</button></div>
-      </form>
-      <div className="list compact-list user-list">
-        {users.map(user => <UserRow key={user.id} user={user} locations={locations} onSaved={onSaved} />)}
+        </form>
+        </div>
+      </details>
+      <div className="user-list-toolbar">
+        <strong>Accesos</strong>
+        <div className="segmented status-filter" aria-label="Filtrar usuarios">
+          <button className={statusFilter === "activos" ? "active" : ""} onClick={() => setStatusFilter("activos")}>Activos</button>
+          <button className={statusFilter === "inactivos" ? "active" : ""} onClick={() => setStatusFilter("inactivos")}>Inactivos</button>
+          <button className={statusFilter === "todos" ? "active" : ""} onClick={() => setStatusFilter("todos")}>Todos</button>
+        </div>
+      </div>
+      <div className="list user-list">
+        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} onSaved={onSaved} />)}
+        {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
       </div>
     </section>
   );
@@ -2818,41 +3136,106 @@ function UserRow({ user, locations, onSaved }: { user: Profile; locations: Locat
     full_name: user.full_name,
     role: user.role,
     location_id: user.location_id || "",
-    active: user.active
+    active: user.active,
+    document_number: user.document_number || ""
   });
   const [resetStatus, setResetStatus] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
 
-  async function sendPasswordReset() {
-    if (!window.confirm(`Enviar un correo para restablecer la contrasena de ${user.full_name}?`)) return;
-    setResetStatus("Enviando...");
+  useEffect(() => {
+    setForm({
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role,
+      location_id: user.location_id || "",
+      active: user.active,
+      document_number: user.document_number || ""
+    });
+  }, [user]);
+
+  async function resetPassword() {
+    if (!window.confirm(`Blanquear la clave de ${user.full_name} usando su DNI como clave provisoria?`)) return;
+    setResetStatus("Blanqueando...");
     try {
-      await requestPasswordReset(user.email);
-      setResetStatus("Correo enviado");
+      const result = await resetUserPasswordToDocument(user.id);
+      setResetStatus(`Clave provisoria: ${result.temporary_password}. Debe cambiarla al ingresar.`);
     } catch (err) {
-      setResetStatus(err instanceof Error ? err.message : "No se pudo enviar");
+      setResetStatus(err instanceof Error ? err.message : "No se pudo blanquear");
     }
   }
 
+  async function saveUser(next = form) {
+    setResetStatus("");
+    try {
+      await updateProfile(user.id, next);
+      await onSaved();
+      setEditing(false);
+    } catch (err) {
+      setResetStatus(err instanceof Error ? err.message : "No se pudo actualizar el usuario.");
+    }
+  }
+
+  async function toggleActive() {
+    if (user.is_master) return;
+    setChangingStatus(true);
+    setResetStatus("");
+    try {
+      await setProfileActive(user.id, !user.active);
+      await onSaved();
+    } catch (err) {
+      setResetStatus(err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario.");
+    } finally {
+      setChangingStatus(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <article className={`user-card ${user.active ? "" : "is-inactive"}`}>
+        <div className="user-card-identity">
+          <span className="avatar">{user.full_name?.slice(0, 2).toUpperCase() || "US"}</span>
+          <div><strong>{user.full_name}</strong><small>{user.email}</small></div>
+        </div>
+        <div className="user-card-meta">
+          <span>{user.role === "MEDICA_ADMIN" ? "Medica/Admin" : "Secretaria"}</span>
+          <span>{user.location?.name || "Todos los consultorios"}</span>
+          {user.document_number && <span>DNI {formatDocumentNumber("DNI", user.document_number, "")}</span>}
+        </div>
+        <div className="user-card-actions">
+          {user.is_master ? <span className="badge master">Maestro</span> : (
+            <label className="status-switch">
+              <input type="checkbox" checked={user.active} disabled={changingStatus} onChange={() => void toggleActive()} />
+              <span>{changingStatus ? "Guardando..." : user.active ? "Activo" : "Inactivo"}</span>
+            </label>
+          )}
+          {!user.is_master && <button type="button" className="secondary-action" onClick={() => setEditing(true)}>Editar</button>}
+        </div>
+        {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
+      </article>
+    );
+  }
+
   return (
-    <div className="editable-row user-row">
-      <input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, full_name: formatProperName(current.full_name) }))} />
-      <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-      <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as ProfileInput["role"], location_id: e.target.value === "SECRETARIA" ? form.location_id : "" })}>
-        <option value="SECRETARIA">Secretaria</option>
-        <option value="MEDICA_ADMIN">Medica/Admin</option>
-      </select>
-      <select value={form.location_id || ""} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
-        <option value="">Todas</option>
-        {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-      </select>
-      <span className={form.active ? "badge ok" : "badge muted"}>{form.active ? "Activo" : "Inactivo"}</span>
-      <div className="row-actions">
-        <button onClick={async () => { await updateProfile(user.id, form); await onSaved(); }}>Guardar</button>
-        <button type="button" onClick={() => void sendPasswordReset()}>Restablecer clave</button>
-        <button onClick={async () => { await updateProfile(user.id, { ...form, active: !form.active }); await onSaved(); }}>{form.active ? "Dar de baja" : "Reactivar"}</button>
+    <article className="user-card user-card-editing">
+      <div className="user-edit-grid">
+        <label>Nombre<input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} onBlur={() => setForm(current => ({ ...current, full_name: formatProperName(current.full_name) }))} /></label>
+        <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
+        <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={e => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", e.target.value) })} inputMode="numeric" /></label>
+        <label>Rol<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as ProfileInput["role"], location_id: e.target.value === "SECRETARIA" ? form.location_id : "" })}>
+          <option value="SECRETARIA">Secretaria</option><option value="MEDICA_ADMIN">Medica/Admin</option>
+        </select></label>
+        <label>Consultorio<select value={form.location_id || ""} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={form.role === "MEDICA_ADMIN"}>
+          <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+        </select></label>
+      </div>
+      <div className="row-actions user-edit-actions">
+        <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
+        <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
+        <button type="button" onClick={() => void resetPassword()}>Blanquear clave</button>
       </div>
       {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
-    </div>
+    </article>
   );
 }
 function Page({ title, subtitle, actions, children }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode }) {

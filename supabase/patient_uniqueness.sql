@@ -288,6 +288,8 @@ create policy "patient files scoped insert" on storage.objects for insert with c
   )
 );
 
+notify pgrst, 'reload schema';
+
 commit;
 
 select patient.document_type, patient.document, patient.last_name, patient.first_name, count(link.location_id) as consultorios
