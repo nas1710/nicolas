@@ -78,6 +78,7 @@ import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalD
 import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
 import { OperationalDashboard } from "./features/dashboard/OperationalDashboard";
+import { CommunicationComposer, CommunicationTemplateManager } from "./features/communications/CommunicationCenter";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
 import { PublicBookingPage } from "./pages/PublicBookingPage";
 import { PublicHomePage } from "./pages/PublicHomePage";
@@ -542,7 +543,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
                         <time>{slot.time}</time>
                         <strong>{slot.appointment.patients?.last_name}, {slot.appointment.patients?.first_name}</strong>
                         <AppointmentTypeLabels value={appointmentTypeValue(slot.appointment)} />
-                        <small>{slot.appointment.locations?.name} · {appointmentStatusLabel(slot.appointment.status)}</small>
+                        <small>{slot.appointment.locations?.name} · {appointmentStatusLabel(slot.appointment.status)}{slot.appointment.communications?.some(item => item.status === "ENVIADO_MANUAL" || item.status === "CONTACTADO") ? " · Contactado" : ""}</small>
                       </button>
                       <button className="link slot-link" type="button" onClick={() => onOpenPatient(slot.appointment!.patient_id)}>Abrir paciente</button>
                     </>
@@ -561,6 +562,7 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
         {mode === "dia" && (
           <AgendaDayDetail
             slot={selectedDaySlot}
+            profile={profile}
             onOpenPatient={onOpenPatient}
             onEditAppointment={openEditAppointment}
             onNewAppointment={openNewAppointment}
@@ -573,15 +575,18 @@ function Agenda({ profile, openNewKey, onOpenPatient }: { profile: Profile; open
 
 function AgendaDayDetail({
   slot,
+  profile,
   onOpenPatient,
   onEditAppointment,
   onNewAppointment
 }: {
   slot: AgendaSlot | null;
+  profile: Profile;
   onOpenPatient: (id: string) => void;
   onEditAppointment: (appointment: Appointment) => void;
   onNewAppointment: (draft: { starts_at: string; location_id: string; duration_min: number }) => void;
 }) {
+  const [showCommunication,setShowCommunication]=useState(false);
   if (!slot) {
     return (
       <aside className="agenda-detail-panel">
@@ -627,6 +632,7 @@ function AgendaDayDetail({
         <div><span>Motivo</span><strong>{appointmentTypeLabel(appointmentTypeValue(appointment))}</strong></div>
         <div><span>Telefono</span><strong>{patient?.phone || "-"}</strong></div>
         <div><span>Email</span><strong>{patient?.email || "-"}</strong></div>
+        <div><span>Contacto</span><strong>{appointment.communications?.some(item=>item.status==="ENVIADO_MANUAL"||item.status==="CONTACTADO")?"Registrado":"Pendiente"}</strong></div>
       </div>
 
       <div className="detail-actions">
@@ -634,7 +640,9 @@ function AgendaDayDetail({
         {patient && <button className="secondary-action" onClick={() => onOpenPatient(patient.id)}>Abrir historia</button>}
         {whatsapp ? <a href={whatsapp} target="_blank" rel="noreferrer">WhatsApp</a> : <span>Sin WhatsApp</span>}
         {mail ? <a href={mail}>Email</a> : <span>Sin email</span>}
+        {patient&&<button className="secondary-action" onClick={()=>setShowCommunication(!showCommunication)}>Comunicar</button>}
       </div>
+      {showCommunication&&patient&&<CommunicationComposer patient={patient} appointment={appointment} profile={profile}/>}
     </aside>
   );
 }
@@ -1582,7 +1590,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       {panel === "nota" && <AdministrativeNoteForm patient={currentPatient} onSaved={refresh} />}
       {panel === "enviar" && <DocumentShareForm patient={currentPatient} profile={profile} />}
 
-      <ContactActions patient={currentPatient} />
+      <ContactActions patient={currentPatient} profile={profile} />
 
       <h2>Adjuntos</h2>
       <AttachmentList attachments={currentPatient.attachments || []} />
@@ -1598,6 +1606,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
         </article>
       ))}
       {(currentPatient.administrative_notes || []).map(n => <article className="timeline" key={n.id}><strong>Nota administrativa</strong><p>{n.text}</p></article>)}
+      {(currentPatient.communications || []).map(c => <article className="timeline communication-timeline" key={c.id}><strong>{c.channel} · {(c.status||"ENVIADO_MANUAL").replace(/_/g," ")}</strong><small>{new Date(c.created_at||c.sent_at).toLocaleString("es-AR")}</small><p>{c.body}</p>{c.observation&&<p><b>Observacion:</b> {c.observation}</p>}</article>)}
     </Page>
   );
 }
@@ -1735,7 +1744,9 @@ function PatientContactForm({ patient, onSaved }: { patient: Patient; onSaved: (
     phone: patient.phone || "",
     email: patient.email || "",
     affiliate_number: patient.affiliate_number || "",
-    insurance_plan_id: patient.insurance_plan_id || ""
+    insurance_plan_id: patient.insurance_plan_id || "",
+    documentation_pending: patient.documentation_pending || false,
+    documentation_note: patient.documentation_note || ""
   });
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -1773,6 +1784,8 @@ function PatientContactForm({ patient, onSaved }: { patient: Patient; onSaved: (
           </select>
         </label>
         <label>Nro. afiliado<input value={form.affiliate_number} onChange={e => setForm({ ...form, affiliate_number: e.target.value })} /></label>
+        <label className="check-row"><input type="checkbox" checked={form.documentation_pending || false} onChange={e => setForm({ ...form, documentation_pending: e.target.checked })} /> Documentacion pendiente</label>
+        {form.documentation_pending && <label>Detalle pendiente<input value={form.documentation_note || ""} onChange={e => setForm({ ...form, documentation_note: e.target.value })} placeholder="Ej.: orden, autorizacion, estudios previos" /></label>}
       </div>
       {saved && <p className="notice ok-notice">Datos actualizados.</p>}
       {error && <p className="error">{error}</p>}
@@ -1781,7 +1794,8 @@ function PatientContactForm({ patient, onSaved }: { patient: Patient; onSaved: (
   );
 }
 
-function ContactActions({ patient }: { patient: Patient }) {
+function ContactActions({ patient,profile }: { patient: Patient;profile:Profile }) {
+  const [showCommunication,setShowCommunication]=useState(false);
   const whatsapp = buildWhatsappUrl(patient.phone, `Hola ${patient.first_name}, le escribimos del consultorio.`);
   const mail = patient.email ? `mailto:${patient.email}?subject=${encodeURIComponent("Consultorio cardiologia")}` : "";
 
@@ -1790,6 +1804,8 @@ function ContactActions({ patient }: { patient: Patient }) {
       <strong>Contacto</strong>
       {whatsapp ? <a href={whatsapp} target="_blank" rel="noreferrer">WhatsApp</a> : <span>Sin WhatsApp</span>}
       {mail ? <a href={mail}>Email</a> : <span>Sin email</span>}
+      <button type="button" onClick={()=>setShowCommunication(!showCommunication)}>Registrar comunicacion</button>
+      {showCommunication&&<CommunicationComposer patient={patient} profile={profile}/>}
     </div>
   );
 }
@@ -2230,6 +2246,7 @@ function Settings({ profile }: { profile: Profile }) {
         <div className="admin-grid">
           {canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
           {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommercialCatalogManager />}
+          {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommunicationTemplateManager />}
           <LocationManager locations={data.locations} canEdit={profile.is_master || profile.role === "ADMINISTRADOR"} onSaved={refresh} />
           <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
           <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} />

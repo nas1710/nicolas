@@ -184,6 +184,13 @@ Secretaria ve su consultorio. Incluye filtros por fechas, profesional,
 especialidad, práctica, consultorio, estado y origen, además de exportación CSV
 de los turnos visibles. Ejecutar `supabase/07_dashboard_reporting.sql`.
 
+## Comunicaciones manuales
+
+`supabase/08_communications.sql` agrega plantillas editables, estados de
+contacto y alertas operativas. WhatsApp y email se abren mediante `wa.me` y
+`mailto:`; la app no usa APIs pagas ni afirma automáticamente que el mensaje
+fue enviado. El resultado se registra manualmente desde Agenda o Pacientes.
+
 Desde **Pacientes**:
 
 - la medica/admin puede cargar evoluciones clinicas, diagnostico, indicaciones y proximo control

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DashboardFilters, DashboardMetric, DashboardReport, getDashboardReport, Profile } from "../../api/supabase";
 import { Page } from "../../components/ui";
+import { CommunicationAlerts } from "../communications/CommunicationCenter";
 
 type Props = { profile: Profile; onAgenda: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void };
 
@@ -46,6 +47,7 @@ export function OperationalDashboard({ profile, onAgenda, onNewPatient, onOpenPa
       <section className="panel report-table-panel"><div className="section-title"><div><h2>Turnos del periodo</h2><p>Hasta 500 filas, respetando tus permisos.</p></div><button onClick={()=>exportAppointmentsCsv(report)}>Exportar CSV</button></div>
         <div className="report-table-wrap"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>Profesional</th><th>Consultorio</th><th>Estado</th><th>Origen</th></tr></thead><tbody>{report.appointments.map(item=><tr key={item.id}><td>{formatDate(item.starts_at)}</td><td>{item.patient_last_name}, {item.patient_first_name}</td><td>{item.professional_name}</td><td>{item.location_name}</td><td>{item.status}</td><td>{item.source==="WEB"?"Web":"Interno"}</td></tr>)}</tbody></table>{!report.appointments.length&&<p className="empty-day">No hay turnos para estos filtros.</p>}</div>
       </section>
+      <CommunicationAlerts onOpenPatient={onOpenPatient}/>
       {!!report.patients.length && <section className="panel report-patients"><h2>Pacientes recientes</h2>{report.patients.slice(0,8).map(patient=><button key={patient.id} onClick={()=>onOpenPatient(patient.id)}><span>{patient.last_name}, {patient.first_name}</span><small>{patient.source==="WEB"?"Turnera web":"Carga interna"} · {patient.validation_status.replace(/_/g," ")}</small></button>)}</section>}
     </>}
   </Page>;

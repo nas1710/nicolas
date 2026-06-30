@@ -100,7 +100,7 @@ export type PublicBookingDoctor = {
 };
 
 export type PublicSpecialty = { id: string; name: string; description: string | null };
-export type PublicPractice = { id: string; specialty_id: string; name: string; description: string | null; duration_min: number };
+export type PublicPractice = { id: string; specialty_id: string; name: string; description: string | null; duration_min: number; requires_preparation?: boolean; preparation_instructions?: string | null };
 export type PublicProfessional = { id: string; full_name: string; specialty: string; specialty_ids: string[]; practice_ids: string[] };
 export type PublicLocation = { id: string; name: string; address: string | null };
 export type PublicCommercialCatalog = { specialties: PublicSpecialty[]; practices: PublicPractice[]; professionals: PublicProfessional[]; locations: PublicLocation[] };
@@ -184,6 +184,8 @@ export type Patient = {
   source?: "INTERNAL" | "WEB";
   validation_status?: "PENDIENTE" | "VALIDADO" | "ARCHIVADO_NO_VALIDADO";
   affiliate_number: string | null;
+  documentation_pending?: boolean;
+  documentation_note?: string | null;
   insurance_plan_id: string | null;
   insurance_plans?: InsurancePlan | null;
   patient_locations?: Array<{ location_id: string; locations?: Location | null }>;
@@ -208,6 +210,9 @@ export type Appointment = {
   doctor_id?: string | null;
   patients?: Patient | null;
   locations?: Location | null;
+  doctor?: Pick<Profile, "id" | "full_name" | "specialty"> | null;
+  appointment_practices?: Array<{ practices?: { name: string; preparation_instructions?: string | null } | null }>;
+  communications?: Array<Pick<Communication,"status"|"channel"|"created_at">>;
 };
 
 export type AppointmentStatus = "PENDIENTE" | "CONFIRMADO" | "RECORDATORIO_ENVIADO" | "CANCELADO" | "AUSENTE";
@@ -251,11 +256,19 @@ export type ClinicalEvolution = {
 
 export type Communication = {
   id: string;
-  channel: string;
+  channel: "WHATSAPP" | "EMAIL" | "PHONE";
   subject: string;
   body: string;
   sent_at: string;
+  created_at?: string;
+  appointment_id?: string | null;
+  professional_id?: string | null;
+  kind?: string;
+  status?: "PREPARADO" | "ENVIADO_MANUAL" | "CONTACTADO" | "SIN_RESPUESTA" | "FALLIDO";
+  observation?: string | null;
 };
+export type CommunicationTemplate = { id:string;name:string;kind:string;channel:"WHATSAPP"|"EMAIL"|"PHONE";subject:string;body:string;active:boolean };
+export type CommunicationAlert = { kind:string;appointment_id:string|null;patient_id:string;title:string;due_at:string|null;detail:string };
 
 export type Attachment = {
   id: string;
@@ -293,6 +306,8 @@ export type PatientContactInput = {
   email?: string;
   affiliate_number?: string;
   insurance_plan_id?: string;
+  documentation_pending?: boolean;
+  documentation_note?: string;
 };
 
 export type ClinicalEvolutionInput = {
@@ -673,7 +688,9 @@ export async function updatePatientContact(id: string, input: PatientContactInpu
       phone: input.phone?.trim() || null,
       email: input.email?.trim() || null,
       affiliate_number: input.affiliate_number?.trim() || null,
-      insurance_plan_id: input.insurance_plan_id || null
+      insurance_plan_id: input.insurance_plan_id || null,
+      documentation_pending: input.documentation_pending || false,
+      documentation_note: input.documentation_note?.trim() || null
     })
     .eq("id", id)
     .select("*, insurance_plans(*), patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*))")
@@ -735,6 +752,17 @@ export async function createAdministrativeNote(input: AdministrativeNoteInput) {
   throwIfError(error);
   return data as AdministrativeNote;
 }
+
+export async function listCommunicationTemplates() {
+  const { data,error }=await supabase.from("communication_templates").select("*").order("name"); throwIfError(error); return (data||[]) as CommunicationTemplate[];
+}
+export async function saveCommunicationTemplate(template: CommunicationTemplate) {
+  const { error }=await supabase.from("communication_templates").update({name:template.name,subject:template.subject,body:template.body,active:template.active,updated_at:new Date().toISOString()}).eq("id",template.id); throwIfError(error);
+}
+export async function createCommunication(input:{patient_id:string;appointment_id?:string|null;professional_id?:string|null;kind:string;channel:Communication["channel"];subject:string;body:string;status:NonNullable<Communication["status"]>;observation?:string}) {
+  const {data:session}=await supabase.auth.getSession(); const {data,error}=await supabase.from("communications").insert({...input,appointment_id:input.appointment_id||null,professional_id:input.professional_id||null,observation:input.observation?.trim()||null,created_by:session.session?.user.id,sent_at:new Date().toISOString()}).select("*").single(); throwIfError(error); return data as Communication;
+}
+export async function listCommunicationAlerts() { const {data,error}=await supabase.rpc("communication_alerts"); throwIfError(error); return (data||[]) as CommunicationAlert[]; }
 
 export async function uploadPatientAttachment(input: {
   patientId: string;
@@ -819,7 +847,7 @@ export async function createSignedAttachmentUrl(path: string) {
 export async function listAppointments() {
   const { data, error } = await supabase
     .from("appointments")
-    .select("*, patients(*), locations(*)")
+    .select("*, patients(*, insurance_plans(*)), locations(*), doctor:profiles!appointments_doctor_id_fkey(id,full_name,specialty), appointment_practices(practices(name,preparation_instructions)), communications(status,channel,created_at)")
     .order("starts_at", { ascending: true });
   throwIfError(error);
   return (data || []) as Appointment[];
