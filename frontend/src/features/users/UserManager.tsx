@@ -4,6 +4,7 @@ import {
   formatDocumentNumber,
   formatProperName,
   Location,
+  OrganizationSummary,
   normalizeDocumentNumber,
   Profile,
   ProfileInput,
@@ -13,8 +14,9 @@ import {
   updateProfile
 } from "../../api/supabase";
 
-export function UserManager({ users, locations, canManageAdministrators, onSaved }: { users: Profile[]; locations: Location[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "" });
+export function UserManager({ users, locations, organizations, currentOrganizationId, canManageAdministrators, onSaved }: { users: Profile[]; locations: Location[]; organizations: OrganizationSummary[]; currentOrganizationId?: string | null; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
+  const defaultOrganizationId = currentOrganizationId || organizations[0]?.id || "";
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "", organization_id: defaultOrganizationId });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,7 +34,7 @@ export function UserManager({ users, locations, canManageAdministrators, onSaved
     setSaving(true);
     try {
       const created = await createUserWithLogin(form);
-      setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "" });
+      setForm({ email: "", password: "", full_name: "", role: "SECRETARIA", location_id: "", document_number: "", organization_id: defaultOrganizationId });
       await onSaved();
       setMessage(`${created.profile.full_name} ya puede ingresar. Clave provisoria: ${created.temporary_password}. Debera cambiarla en el primer ingreso.`);
     } catch (err) {
@@ -67,6 +69,11 @@ export function UserManager({ users, locations, canManageAdministrators, onSaved
                 {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
               </select>
             </label>
+            {canManageAdministrators && <label>Organizacion
+              <select value={form.organization_id} onChange={event => setForm({ ...form, organization_id: event.target.value })}>
+                {organizations.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.commercial_name}</option>)}
+              </select>
+            </label>}
             {error && <p className="error">{error}</p>}
             {message && <p className="notice ok-notice">{message}</p>}
             <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Creando..." : "Crear usuario"}</button></div>
@@ -82,14 +89,14 @@ export function UserManager({ users, locations, canManageAdministrators, onSaved
         </div>
       </div>
       <div className="list user-list">
-        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} canManageAdministrators={canManageAdministrators} onSaved={onSaved} />)}
+        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} organizations={organizations} canManageAdministrators={canManageAdministrators} onSaved={onSaved} />)}
         {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
       </div>
     </section>
   );
 }
 
-function UserRow({ user, locations, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
+function UserRow({ user, locations, organizations, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; organizations: OrganizationSummary[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Omit<ProfileInput, "id">>({
     email: user.email,
     full_name: user.full_name,
@@ -170,6 +177,7 @@ function UserRow({ user, locations, canManageAdministrators, onSaved }: { user: 
         <div className="user-card-meta">
           <span>{user.role === "ADMINISTRADOR" ? "Administrador" : user.role === "SECRETARIA" ? "Secretaria" : "Medico"}</span>
           <span>{user.location?.name || "Todos los consultorios"}</span>
+          {canManageAdministrators && <span>{organizations.find(item => item.id === user.organization_id)?.commercial_name || "Organizacion principal"}</span>}
           {user.document_number && <span>DNI {formatDocumentNumber("DNI", user.document_number, "")}</span>}
         </div>
         <div className="user-card-actions">

@@ -72,6 +72,7 @@ export type Profile = {
   institution_name?: string | null;
   institutional_footer?: string | null;
   signature_path?: string | null;
+  organization_id?: string | null;
   location?: Location | null;
 };
 
@@ -117,6 +118,7 @@ export type OrganizationSettings = {
   insurance_plans?: Array<{id:string;name:string}>;
 };
 export type OrganizationCenter = { id:string; organization_id:string; name:string; address:string|null; phone:string|null; email:string|null; active:boolean; published:boolean };
+export type OrganizationSummary = { id:string; commercial_name:string; active:boolean };
 export type DashboardMetric = { label: string; value: number };
 export type DashboardFilters = { from: string; to: string; professional_id?: string; specialty_id?: string; practice_id?: string; location_id?: string; status?: string; source?: string; validation_status?: string };
 export type DashboardReport = {
@@ -375,6 +377,7 @@ export type ProfileInput = {
   location_id?: string | null;
   active: boolean;
   document_number?: string | null;
+  organization_id?: string | null;
 };
 
 export type NewUserInput = {
@@ -384,6 +387,7 @@ export type NewUserInput = {
   role: Role;
   location_id?: string | null;
   document_number?: string | null;
+  organization_id?: string | null;
 };
 
 function throwIfError(error: { message: string } | null) {
@@ -1220,6 +1224,12 @@ export async function listProfiles() {
   return (data.profiles || []) as Profile[];
 }
 
+export async function listOrganizations() {
+  const { data, error } = await supabase.from("organizations").select("id,commercial_name,active").order("commercial_name");
+  throwIfError(error);
+  return (data || []) as OrganizationSummary[];
+}
+
 export async function createProfile(input: ProfileInput) {
   const { data, error } = await supabase
     .from("profiles")
@@ -1246,7 +1256,8 @@ export async function createUserWithLogin(input: NewUserInput) {
     full_name: formatProperName(input.full_name),
     role: input.role,
     location_id: input.role === "SECRETARIA" ? input.location_id || null : null,
-    document_number: input.document_number?.replace(/\D/g, "") || null
+    document_number: input.document_number?.replace(/\D/g, "") || null,
+    organization_id: input.organization_id || null
   });
   return data as { profile: Profile; temporary_password: string };
 }

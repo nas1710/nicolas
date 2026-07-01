@@ -65,7 +65,7 @@ Deno.serve(async request => {
 
     const { data: requester, error: requesterError } = await adminClient
       .from("profiles")
-      .select("id, role, active, is_master")
+      .select("id, role, active, is_master, organization_id")
       .eq("id", authData.user.id)
       .single();
     const requesterCanManage = requester?.is_master || requester?.role === "ADMINISTRADOR";
@@ -91,10 +91,10 @@ Deno.serve(async request => {
     if (action === "list_users") {
       let query = adminClient
         .from("profiles")
-        .select("*, location:locations(*)")
+        .select("*, location:locations!profiles_location_id_fkey(*)")
         .eq("is_master", false)
         .order("full_name");
-      if (!requester.is_master) query = query.not("role", "in", "(ADMINISTRADOR,MEDICA_ADMIN)");
+      if (!requester.is_master) query = query.eq("organization_id", requester.organization_id).not("role", "in", "(ADMINISTRADOR,MEDICA_ADMIN)");
       const { data: profiles, error } = await query;
       if (error) throw error;
       return json({ profiles: profiles || [] }, corsHeaders);
@@ -109,6 +109,7 @@ Deno.serve(async request => {
         throw new Error("Solo el usuario Maestro puede crear administradores.");
       }
       const locationId = role === "SECRETARIA" ? text(body.location_id) || null : null;
+      const organizationId = requester.is_master ? text(body.organization_id) || requester.organization_id : requester.organization_id;
       const documentNumber = normalizedDocument(body.document_number);
       if (!email.includes("@")) throw new Error("Ingresa un email valido.");
       if (password.length < 8) throw new Error("La contrasena inicial debe tener al menos 8 caracteres.");
@@ -155,9 +156,10 @@ Deno.serve(async request => {
           active: true,
           document_number: documentNumber,
           must_change_password: true,
-          is_master: false
+          is_master: false,
+          organization_id: organizationId
         })
-        .select("*, location:locations(*)")
+        .select("*, location:locations!profiles_location_id_fkey(*)")
         .single();
       if (profileError) {
         if (!existing) await adminClient.auth.admin.deleteUser(authUser.id);
@@ -171,11 +173,12 @@ Deno.serve(async request => {
     if (!targetId) throw new Error("Falta identificar el usuario.");
     const { data: target, error: targetError } = await adminClient
       .from("profiles")
-      .select("id, email, full_name, role, location_id, active, document_number, is_master")
+      .select("id, email, full_name, role, location_id, active, document_number, is_master, organization_id")
       .eq("id", targetId)
       .single();
     if (targetError || !target) throw new Error("Usuario no encontrado.");
     if (target.is_master) throw new Error("El usuario Maestro esta protegido.");
+    if (!requester.is_master && target.organization_id !== requester.organization_id) throw new Error("El usuario pertenece a otra organizacion.");
     if (!requester.is_master && (target.role === "ADMINISTRADOR" || target.role === "MEDICA_ADMIN")) {
       throw new Error("Solo el usuario Maestro puede administrar a otro administrador.");
     }
@@ -233,7 +236,7 @@ Deno.serve(async request => {
           .from("profiles")
           .update({ active: false })
           .eq("id", target.id)
-          .select("*, location:locations(*)")
+          .select("*, location:locations!profiles_location_id_fkey(*)")
           .single();
         if (profileError) {
           await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none" });
@@ -247,7 +250,7 @@ Deno.serve(async request => {
         .from("profiles")
         .update({ active: true })
         .eq("id", target.id)
-        .select("*, location:locations(*)")
+        .select("*, location:locations!profiles_location_id_fkey(*)")
         .single();
       if (profileError) throw profileError;
       const { error: unbanError } = await adminClient.auth.admin.updateUserById(target.id, { ban_duration: "none", email_confirm: true });
@@ -291,7 +294,7 @@ Deno.serve(async request => {
           document_number: documentNumber
         })
         .eq("id", target.id)
-        .select("*, location:locations(*)")
+        .select("*, location:locations!profiles_location_id_fkey(*)")
         .single();
       if (profileError) {
         await adminClient.auth.admin.updateUserById(target.id, {

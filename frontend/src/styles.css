@@ -917,6 +917,45 @@ input, select, textarea {
   grid-column: 1 / -1;
 }
 
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.settings-modules {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #d4dfe2;
+  border-radius: 8px;
+  background: #eaf0f1;
+}
+.settings-modules button {
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #263940;
+  text-align: left;
+}
+.settings-modules button:hover { background: #f7fafb; }
+.settings-modules button.active {
+  border-color: #acd0d2;
+  background: white;
+  color: #0c6d72;
+  box-shadow: 0 3px 10px rgba(20, 62, 68, .08);
+}
+.settings-modules strong { font-size: 15px; }
+.settings-modules small { color: #697a81; font-weight: 600; }
+.settings-module-content { min-width: 0; }
+.settings-module-content > .panel,
+.settings-module-content > .admin-section { margin: 0; }
+.settings-stack { display: grid; gap: 14px; }
+
 .insurance-section {
   padding: 0;
   overflow: hidden;
@@ -1441,6 +1480,9 @@ input, select, textarea {
 @media(max-width:680px){.communication-head { flex-direction:column; }.communication-grid,.template-edit { grid-template-columns:1fr; }.communication-grid .full-field,.template-edit label:nth-child(3){grid-column:auto}.communication-alerts>button{align-items:flex-start;flex-direction:column;gap:4px}}
 
 @media (max-width: 760px) {
+  .settings-workspace { grid-template-columns: 1fr; }
+  .settings-modules { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-modules button { min-width: 0; }
   .document-preview-backdrop { padding: 0; }
   .document-generator { max-height: 100vh; border-radius: 0; }
   .document-generator-layout { grid-template-columns: 1fr; padding: 10px; }

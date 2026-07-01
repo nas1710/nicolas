@@ -26,6 +26,7 @@ import {
   listAttachments,
   listPatients,
   listProfiles,
+  listOrganizations,
   listReports,
   listStudies,
   linkDriveAttachment,
@@ -33,6 +34,7 @@ import {
   MedicalAvailability,
   MedicalAvailabilityInput,
   normalizeDocumentNumber,
+  OrganizationSummary,
   Patient,
   PatientContactInput,
   PatientInput,
@@ -213,12 +215,12 @@ function App() {
           <NavButton active={view === "estudios"} icon="ES" label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />
           <NavButton active={view === "tareas"} icon="TA" label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />
         </nav>
-        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <nav className="nav-group">
           <span>Administracion</span>
           <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
           {canManageUsers(profile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
         </nav>
+        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
           <span className="nav-icon">MA</span><span>Mas</span>
         </button>
@@ -2224,6 +2226,20 @@ function Tasks() {
 
 function Settings({ profile }: { profile: Profile }) {
   const [data, setData] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[]; availability: MedicalAvailability[]; holidays: Holiday[] } | null>(null);
+  type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos";
+  const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
+  const modules: Array<{ id: SettingsModule; label: string; hint: string }> = [
+    ...(isOrganizationAdmin ? [
+      { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes" },
+      { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas" },
+      { id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion" },
+      { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes" }
+    ] : []),
+    { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables" },
+    { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles" },
+    ...(canAccessClinical(profile) ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos" }] : [])
+  ];
+  const [module, setModule] = useState<SettingsModule>(isOrganizationAdmin ? "organizacion" : "agenda");
 
   async function refresh() {
     const config = await getConfiguration();
@@ -2232,18 +2248,22 @@ function Settings({ profile }: { profile: Profile }) {
 
   useEffect(() => { refresh(); }, []);
   return (
-    <Page title="Ajustes" subtitle="Consultorios, obras sociales y usuarios">
+    <Page title="Ajustes" subtitle="Configuracion organizada por modulos">
       {!canManageConfiguration(profile) && <p className="notice">Tu acceso permite consultar la configuracion, pero no modificarla.</p>}
       {data && (
-        <div className="admin-grid">
-          {(profile.is_master || profile.role === "ADMINISTRADOR") && <OrganizationSettingsManager />}
-          {canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
-          {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommercialCatalogManager />}
-          {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommunicationTemplateManager />}
-          <LocationManager locations={data.locations} canEdit={profile.is_master || profile.role === "ADMINISTRADOR"} onSaved={refresh} />
-          <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
-          <AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
-          <HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} />
+        <div className="settings-workspace">
+          <nav className="settings-modules" aria-label="Modulos de ajustes">
+            {modules.map(item => <button key={item.id} type="button" className={module === item.id ? "active" : ""} onClick={() => setModule(item.id)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
+          </nav>
+          <div className="settings-module-content">
+            {module === "organizacion" && isOrganizationAdmin && <OrganizationSettingsManager />}
+            {module === "catalogo" && isOrganizationAdmin && <CommercialCatalogManager />}
+            {module === "consultorios" && <LocationManager locations={data.locations} canEdit={isOrganizationAdmin} onSaved={refresh} />}
+            {module === "comunicaciones" && isOrganizationAdmin && <CommunicationTemplateManager />}
+            {module === "coberturas" && <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />}
+            {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
+            {module === "documentos" && canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
+          </div>
         </div>
       )}
     </Page>
@@ -2252,19 +2272,19 @@ function Settings({ profile }: { profile: Profile }) {
 
 function Users({ profile }: { profile: Profile }) {
   const [users, setUsers] = useState<Profile[]>([]);
-  const [config, setConfig] = useState<{ locations: Location[] } | null>(null);
+  const [config, setConfig] = useState<{ locations: Location[]; organizations: OrganizationSummary[] } | null>(null);
 
   async function refresh() {
     setUsers(await listProfiles());
-    const data = await getConfiguration();
-    setConfig({ locations: data.locations });
+    const [data, organizations] = await Promise.all([getConfiguration(), listOrganizations()]);
+    setConfig({ locations: data.locations, organizations });
   }
 
   useEffect(() => { refresh(); }, []);
 
   return (
-    <Page title="Usuarios" subtitle="Medicas y secretarias">
-      {config && <UserManager users={users} locations={config.locations} canManageAdministrators={profile.is_master} onSaved={refresh} />}
+    <Page title="Usuarios" subtitle="Accesos de la organizacion">
+      {config && <UserManager users={users} locations={config.locations} organizations={config.organizations} currentOrganizationId={profile.organization_id} canManageAdministrators={profile.is_master} onSaved={refresh} />}
     </Page>
   );
 }
