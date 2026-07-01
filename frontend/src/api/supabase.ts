@@ -108,6 +108,15 @@ export type CommercialSpecialty = PublicSpecialty & { active: boolean; published
 export type CommercialPractice = PublicPractice & { active: boolean; published: boolean };
 export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[] };
 export type CommercialAdminCatalog = { specialties: CommercialSpecialty[]; practices: CommercialPractice[]; professionals: CommercialProfessional[] };
+export type OrganizationSettings = {
+  id: string; commercial_name: string; legal_name?: string | null; tax_id?: string | null; description?: string | null;
+  logo_path?: string | null; primary_color: string; secondary_color: string; phone?: string | null; whatsapp?: string | null;
+  email?: string | null; main_address?: string | null; social_links?: Record<string,string>; welcome_title?: string | null;
+  welcome_text?: string | null; legal_text?: string | null; booking_terms?: string | null; insurance_information?: string | null;
+  public_notice?: string | null; centers?: Array<{id:string;name:string;address?:string|null;phone?:string|null;email?:string|null}>;
+  insurance_plans?: Array<{id:string;name:string}>;
+};
+export type OrganizationCenter = { id:string; organization_id:string; name:string; address:string|null; phone:string|null; email:string|null; active:boolean; published:boolean };
 export type DashboardMetric = { label: string; value: number };
 export type DashboardFilters = { from: string; to: string; professional_id?: string; specialty_id?: string; practice_id?: string; location_id?: string; status?: string; source?: string; validation_status?: string };
 export type DashboardReport = {
@@ -859,6 +868,42 @@ export async function getPublicCommercialCatalog() {
   return { specialties: value?.specialties || [], practices: value?.practices || [], professionals: value?.professionals || [], locations: value?.locations || [] } as PublicCommercialCatalog;
 }
 
+export async function getOrganizationSettings() {
+  const { data, error } = await supabase.rpc("public_organization_settings");
+  throwIfError(error);
+  return data as OrganizationSettings;
+}
+
+export async function updateOrganizationSettings(settings: Partial<OrganizationSettings>) {
+  const { data, error } = await supabase.rpc("update_organization_settings", { p_settings: settings });
+  throwIfError(error);
+  return data as OrganizationSettings;
+}
+
+export async function uploadOrganizationLogo(file: File, organizationId: string) {
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error("El logo debe ser JPG, PNG o WEBP.");
+  if (file.size > 2 * 1024 * 1024) throw new Error("El logo no puede superar 2 MB.");
+  const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${organizationId}/logo.${extension}`;
+  const { error } = await supabase.storage.from('organization-assets').upload(path, file, { upsert: true, contentType: file.type });
+  throwIfError(error);
+  await updateOrganizationSettings({ logo_path: path });
+  return path;
+}
+
+export function organizationLogoUrl(path?: string | null) {
+  if (!path) return "";
+  return supabase.storage.from('organization-assets').getPublicUrl(path).data.publicUrl;
+}
+
+export async function listOrganizationCenters() {
+  const { data,error }=await supabase.from('centers').select('*').order('name'); throwIfError(error); return (data||[]) as OrganizationCenter[];
+}
+export async function saveOrganizationCenter(input: Partial<OrganizationCenter>&{name:string}) {
+  if(input.id){const {error}=await supabase.from('centers').update({name:input.name,address:input.address||null,phone:input.phone||null,email:input.email||null,active:input.active,published:input.published}).eq('id',input.id);throwIfError(error);return;}
+  const {error}=await supabase.from('centers').insert({name:input.name,address:input.address||null,phone:input.phone||null,email:input.email||null,active:input.active??true,published:input.published??true});throwIfError(error);
+}
+
 export async function getCommercialAdminCatalog() {
   const { data, error } = await supabase.rpc("commercial_admin_catalog"); throwIfError(error); return data as CommercialAdminCatalog;
 }
@@ -887,6 +932,8 @@ export async function updateCommercialPractice(id: string, input: Partial<Commer
 export async function setProfessionalCommercialProfile(input: { professional_id: string; published: boolean; specialty_ids: string[]; practice_ids: string[] }) {
   const { error } = await supabase.rpc("set_professional_commercial_profile", { p_professional_id: input.professional_id, p_published: input.published, p_specialty_ids: input.specialty_ids, p_practice_ids: input.practice_ids }); throwIfError(error);
 }
+export async function listProfessionalLocationAssignments() { const {data,error}=await supabase.from('professional_locations').select('professional_id,location_id').eq('active',true);throwIfError(error);return (data||[]) as Array<{professional_id:string;location_id:string}>; }
+export async function setProfessionalLocations(professionalId:string,locationIds:string[]) { const {error}=await supabase.rpc('set_professional_locations',{p_professional_id:professionalId,p_location_ids:locationIds});throwIfError(error); }
 
 export async function getBuenosAiresClock() {
   const { data, error } = await supabase.rpc("current_buenos_aires_clock");

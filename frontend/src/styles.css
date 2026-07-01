@@ -1387,6 +1387,12 @@ input, select, textarea {
 .public-home-brand { display: flex; align-items: center; gap: 10px; color: #12343a; text-decoration: none; }
 .public-home-brand span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; background: #dff4ee; color: #075b4c; font-weight: 900; }
 .public-home-login { color: #176f78; font-weight: 800; text-decoration: none; }
+.public-home-brand img { width: 42px; height: 42px; object-fit: contain; }
+.public-home .public-home-login { color: var(--brand-primary); }
+.public-home .public-home-cta { background: var(--brand-primary); }
+.public-home-notice { margin: 18px auto; width: min(1180px, calc(100% - 36px)); padding: 14px 18px; border-left: 4px solid var(--brand-primary); background: var(--brand-secondary); color: #17343a; }
+.organization-settings .section-title img { width: 120px; height: 64px; object-fit: contain; border: 1px solid #d5e1e4; background: white; padding: 6px; }
+.document-preview-brand > img { width: 48px; height: 40px; object-fit: contain; }
 .public-home-hero { min-height: min(590px, calc(100vh - 120px)); display: flex; align-items: center; padding: 50px max(22px, calc((100vw - 1220px)/2)); background-image: linear-gradient(90deg, rgba(10,35,41,.91) 0%, rgba(10,35,41,.69) 45%, rgba(10,35,41,.12) 76%), url('/consultorio-login.png'); background-size: cover; background-position: center; color: white; }
 .public-home-hero-copy { width: min(610px, 100%); }
 .public-home-hero-copy p { margin: 0 0 12px; color: #9fd8ce; font-weight: 900; text-transform: uppercase; font-size: 12px; }
@@ -2387,6 +2393,12 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   width: 44px;
   height: 44px;
   font-size: 14px;
+}
+.public-booking-logo {
+  width: auto;
+  height: 42px;
+  max-width: 150px;
+  object-fit: contain;
 }
 
 .public-booking-header strong,

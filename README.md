@@ -78,6 +78,13 @@ otro administrador no puede cambiarle rol, consultorio, estado ni privilegios.
 - `/turnos`: turnera publica; comienza por especialidad y ofrece profesionales, practicas y horarios reales.
 - `/login`: acceso interno para Master, Administrador, Medico y Secretaria.
 
+La marca, textos publicos, contacto, colores, logo, centros y convenios se
+editan desde **Ajustes > Organizacion y marca**. La implementacion usa una
+organizacion principal y agrega `organization_id` para una transicion futura
+a multiples clientes sin modificar los datos existentes.
+
+La diferencia entre organizacion, sede y consultorio, junto con el procedimiento inicial, se explica en [docs/CONFIGURACION_COMERCIAL.md](docs/CONFIGURACION_COMERCIAL.md).
+
 `frontend/vercel.json` reescribe estas rutas a la SPA, por lo que pueden abrirse o actualizarse directamente sin error 404.
 
 Ese SQL crea:

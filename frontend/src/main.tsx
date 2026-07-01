@@ -77,6 +77,7 @@ import { UserManager } from "./features/users/UserManager";
 import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalDocumentDialog";
 import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
+import { OrganizationSettingsManager } from "./features/organization/OrganizationSettingsManager";
 import { OperationalDashboard } from "./features/dashboard/OperationalDashboard";
 import { CommunicationComposer, CommunicationTemplateManager } from "./features/communications/CommunicationCenter";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
@@ -2235,6 +2236,7 @@ function Settings({ profile }: { profile: Profile }) {
       {!canManageConfiguration(profile) && <p className="notice">Tu acceso permite consultar la configuracion, pero no modificarla.</p>}
       {data && (
         <div className="admin-grid">
+          {(profile.is_master || profile.role === "ADMINISTRADOR") && <OrganizationSettingsManager />}
           {canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
           {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommercialCatalogManager />}
           {(profile.is_master || profile.role === "ADMINISTRADOR") && <CommunicationTemplateManager />}

@@ -4,11 +4,14 @@ import {
   formatProperName,
   IdentityDocumentType,
   InsurancePlan,
+  OrganizationSettings,
   getPublicCommercialCatalog,
+  getOrganizationSettings,
   listPublicBookingDates,
   listPublicBookingInsurancePlans,
   listPublicBookingSlots,
   normalizeDocumentNumber,
+  organizationLogoUrl,
   PublicCommercialCatalog,
   PublicBookingDate,
   PublicBookingResult,
@@ -25,6 +28,7 @@ export function PublicBookingPage() {
   const maxDateValue = new Date(`${today}T12:00:00`);
   maxDateValue.setDate(maxDateValue.getDate() + 90);
   const [catalog, setCatalog] = useState<PublicCommercialCatalog>({ specialties: [], practices: [], professionals: [], locations: [] });
+  const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [specialtyId, setSpecialtyId] = useState(new URLSearchParams(window.location.search).get("especialidad") || "");
   const [insurancePlans, setInsurancePlans] = useState<Pick<InsurancePlan, "id" | "name">[]>([]);
   const [doctorId, setDoctorId] = useState("");
@@ -72,10 +76,11 @@ export function PublicBookingPage() {
   }, [doctorId, duration]);
 
   useEffect(() => {
-    Promise.all([getPublicCommercialCatalog(), listPublicBookingInsurancePlans()])
-      .then(([catalogData, planItems]) => {
+    Promise.all([getPublicCommercialCatalog(), listPublicBookingInsurancePlans(), getOrganizationSettings()])
+      .then(([catalogData, planItems, organizationData]) => {
         setCatalog(catalogData);
         setInsurancePlans(planItems);
+        setOrganization(organizationData);
         const initialSpecialty = specialtyId && catalogData.specialties.some(item => item.id === specialtyId) ? specialtyId : catalogData.specialties[0]?.id || "";
         setSpecialtyId(initialSpecialty);
       })
@@ -151,8 +156,8 @@ export function PublicBookingPage() {
   if (result) {
     const startsAt = new Date(result.starts_at);
     return (
-      <div className="public-booking-page">
-        <header className="public-booking-header"><span className="brand">SP</span><div><strong>Cardio Ayala</strong><small>Turnos online</small></div></header>
+      <div className="public-booking-page" style={organizationTheme(organization)}>
+        <BookingBrand organization={organization} />
         <main className="public-booking-main confirmation-view">
           <section className="public-confirmation">
             <span className="confirmation-mark">OK</span>
@@ -173,12 +178,8 @@ export function PublicBookingPage() {
   }
 
   return (
-    <div className="public-booking-page">
-      <header className="public-booking-header">
-        <span className="brand">SP</span>
-        <div><strong>Cardio Ayala</strong><small>Turnos online</small></div>
-        <a href="/login">Acceso profesionales</a>
-      </header>
+    <div className="public-booking-page" style={organizationTheme(organization)}>
+      <BookingBrand organization={organization} showLogin />
       <main className="public-booking-main">
         <div className="public-booking-title">
           <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Elegí profesional, práctica y un horario disponible.</p></div>
@@ -240,6 +241,24 @@ export function PublicBookingPage() {
       </main>
     </div>
   );
+}
+
+function BookingBrand({ organization, showLogin = false }: { organization: OrganizationSettings | null; showLogin?: boolean }) {
+  const logo = organization?.logo_path ? organizationLogoUrl(organization.logo_path) : "";
+  return (
+    <header className="public-booking-header">
+      {logo ? <img className="public-booking-logo" src={logo} alt={organization?.commercial_name || "Institucion"} /> : <span className="brand">SP</span>}
+      <div><strong>{organization?.commercial_name || "Atencion medica"}</strong><small>Turnos online</small></div>
+      {showLogin && <a href="/login">Acceso profesionales</a>}
+    </header>
+  );
+}
+
+function organizationTheme(organization: OrganizationSettings | null): React.CSSProperties {
+  return {
+    "--public-primary": organization?.primary_color || "#176f78",
+    "--public-secondary": organization?.secondary_color || "#dff4ee"
+  } as React.CSSProperties;
 }
 
 function PublicBookingCalendar({ month, selectedDate, availableDates, minDate, maxDate, onMonthChange, onSelect }: {

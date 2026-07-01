@@ -1,5 +1,5 @@
-import type { Appointment, ClinicalEvolution, Patient, Profile } from "../../api/supabase";
-import { createSignedSignatureUrl } from "../../api/supabase";
+import type { Appointment, ClinicalEvolution, OrganizationSettings, Patient, Profile } from "../../api/supabase";
+import { createSignedSignatureUrl, organizationLogoUrl } from "../../api/supabase";
 
 export type InstitutionalDocumentKind = "HISTORY" | "MEDICAL_REPORT" | "ATTENDANCE_CERTIFICATE" | "APPOINTMENT_SUMMARY" | "INDICATIONS";
 
@@ -11,14 +11,14 @@ export const documentKindLabels: Record<InstitutionalDocumentKind, string> = {
   INDICATIONS: "Indicaciones"
 };
 
-type PdfContext = { patient: Patient; profile: Profile; kind: InstitutionalDocumentKind };
+type PdfContext = { patient: Patient; profile: Profile; kind: InstitutionalDocumentKind; organization?: OrganizationSettings|null };
 
 export async function downloadInstitutionalPdf(context: PdfContext) {
   const doc = await buildInstitutionalPdf(context);
   doc.save(institutionalPdfFileName(context.patient, context.kind));
 }
 
-export async function buildInstitutionalPdf({ patient, profile, kind }: PdfContext) {
+export async function buildInstitutionalPdf({ patient, profile, kind, organization }: PdfContext) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const evolutions = sortedEvolutions(patient);
@@ -26,21 +26,27 @@ export async function buildInstitutionalPdf({ patient, profile, kind }: PdfConte
   const appointments = sortedAppointments(patient);
   const latestAppointment = appointments[appointments.length - 1];
   const signatureImage = profile.signature_path ? await loadSignatureImage(profile.signature_path).catch(() => null) : null;
+  const organizationLogo = organization?.logo_path ? await loadPublicImage(organizationLogoUrl(organization.logo_path)).catch(() => null) : null;
   let y = 0;
 
   const addPage = () => {
     if (doc.getNumberOfPages() > 0 && y > 0) doc.addPage();
     doc.setFillColor(18, 52, 58);
     doc.rect(0, 0, 210, 28, "F");
-    doc.setFillColor(223, 244, 238);
-    doc.roundedRect(15, 7, 18, 14, 2, 2, "F");
-    doc.setTextColor(7, 91, 76);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("SP", 24, 16, { align: "center" });
+    if (organizationLogo) {
+      const size = fitImage(doc.getImageProperties(organizationLogo.data), 24, 16);
+      doc.addImage(organizationLogo.data, organizationLogo.format, 15, 6, size.width, size.height, undefined, "FAST");
+    } else {
+      doc.setFillColor(223, 244, 238);
+      doc.roundedRect(15, 7, 18, 14, 2, 2, "F");
+      doc.setTextColor(7, 91, 76);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("SP", 24, 16, { align: "center" });
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
-    doc.text(profile.institution_name || "Documento asistencial", 39, 13);
+    doc.text(organization?.commercial_name || profile.institution_name || "Documento asistencial", 39, 13);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.text(professionalLine(profile), 39, 19);
@@ -111,7 +117,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind }: PdfConte
     doc.setDrawColor(205, 218, 221);
     doc.line(15, 286, 195, 286);
     doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(98, 113, 121);
-    doc.text(profile.institutional_footer || "Documento confidencial generado por el sistema de gestion asistencial.", 16, 291);
+    doc.text(organization?.legal_text || profile.institutional_footer || "Documento confidencial generado por el sistema de gestion asistencial.", 16, 291);
     doc.text(`Pagina ${page} de ${pages}`, 194, 291, { align: "right" });
   }
   doc.setProperties({ title: `${documentKindLabels[kind]} - ${patient.last_name}, ${patient.first_name}`, author: profile.full_name, subject: documentKindLabels[kind] });
@@ -192,4 +198,27 @@ async function loadSignatureImage(path: string) {
   const blob = await response.blob();
   const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
   return { data, format: blob.type === "image/png" ? "PNG" : blob.type === "image/webp" ? "WEBP" : "JPEG" };
+}
+
+async function loadPublicImage(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("No se pudo cargar el logo institucional.");
+  const blob = await response.blob();
+  const data = await blobToDataUrl(blob);
+  return { data, format: imageFormat(blob.type) };
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function imageFormat(type: string) { return type === "image/png" ? "PNG" : type === "image/webp" ? "WEBP" : "JPEG"; }
+function fitImage(properties: { width: number; height: number }, maxWidth: number, maxHeight: number) {
+  const ratio = Math.min(maxWidth / properties.width, maxHeight / properties.height);
+  return { width: properties.width * ratio, height: properties.height * ratio };
 }

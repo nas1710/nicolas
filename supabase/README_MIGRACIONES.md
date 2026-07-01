@@ -26,7 +26,8 @@ Ejecutar en SQL Editor con rol `postgres`:
 9. `supabase/08_communications.sql`
 10. `supabase/09_internal_user_access.sql`
 11. `supabase/10_security_hardening.sql`
-12. Desplegar las Edge Functions
+12. `supabase/11_commercial_branding.sql`
+13. Desplegar las Edge Functions
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -45,7 +46,8 @@ Para la base publicada de Cardio Ayala:
 9. `supabase/08_communications.sql`
 10. `supabase/09_internal_user_access.sql`
 11. `supabase/10_security_hardening.sql`
-12. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
+12. `supabase/11_commercial_branding.sql`
+13. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
