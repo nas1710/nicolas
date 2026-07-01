@@ -162,6 +162,16 @@ function App() {
     return () => data.subscription.unsubscribe();
   }, [publicBookingPath, publicHomePath]);
 
+  useEffect(() => {
+    if (!profile) return;
+    setView("inicio");
+    setSelectedPatientId(null);
+    setNewAppointmentKey(0);
+    setNewPatientKey(0);
+    setMobileMoreOpen(false);
+    setViewResetKey(key => key + 1);
+  }, [profile?.id]);
+
   if (publicHomePath) return <PublicHomePage />;
   if (publicBookingPath) return <PublicBookingPage />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
