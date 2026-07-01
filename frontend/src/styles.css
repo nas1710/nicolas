@@ -977,6 +977,18 @@ input, select, textarea {
 .plan-manager { padding: 14px; }
 .plan-manager summary { cursor: pointer; font-size: 17px; font-weight: 900; }
 .commercial-rows > .plan-edit-row { grid-template-columns: minmax(170px,1fr) repeat(3,110px) auto auto; }
+.commercial-alert-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.commercial-alert-strip article { display:flex; align-items:center; justify-content:space-between; min-height:70px; padding:14px 18px; border:1px solid #d5e0e2; border-left:5px solid #d4a520; background:#fff; }
+.commercial-alert-strip article.danger { border-left-color:#c94f4f; background:#fff8f7; }
+.commercial-alert-strip span { color:#596b72; font-weight:800; }.commercial-alert-strip strong { font-size:28px; }
+.commercial-warning-badge { justify-self:end; padding:3px 7px; color:#8b4200; background:#fff0cf; font-size:12px; font-style:normal; font-weight:900; }
+.commercial-contract-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }.commercial-contract-grid label,.payment-form label,.plan-edit-card label { display:grid; gap:4px; color:#53646c; font-size:12px; font-weight:800; }
+.commercial-subpanel { margin-top:14px; padding:12px; border:1px solid #d5e0e2; background:#fff; }.commercial-subpanel summary { cursor:pointer; font-weight:900; }
+.payment-form { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px; }.payment-form button { align-self:end; }
+.payment-list,.commercial-history { display:grid; gap:6px; margin-top:10px; }.payment-list>div,.commercial-history>div { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:9px; background:#f2f7f8; }.payment-list span,.commercial-history>div { min-width:0; }.payment-list small,.commercial-history small,.commercial-history span { color:#63747b; }.payment-list span { display:grid; }.payment-list .voided { opacity:.58; text-decoration:line-through; }
+.plan-catalog { display:grid; gap:8px; margin-top:12px; }.plan-edit-card { padding:12px; border:1px solid #d6e0e3; background:#f8fbfc; }.plan-edit-card>div { display:grid; grid-template-columns:1fr 1.4fr; gap:8px; margin-bottom:8px; }.plan-edit-card>div:nth-child(2) { grid-template-columns:repeat(6,minmax(95px,1fr)); }.plan-edit-card footer { display:flex; justify-content:space-between; align-items:center; }
+.plan-edit-card.new-plan { border:1px dashed #1b7a83; background:#eef9f8; }
+.commercial-account-banner { display:flex; justify-content:space-between; gap:18px; margin-bottom:12px; padding:11px 14px; border-left:5px solid #d5a222; background:#fff4d8; }.commercial-account-banner.warning { border-left-color:#c94d4d; background:#fff0ed; }.commercial-account-banner div { display:grid; gap:2px; }.commercial-account-banner small { align-self:center; color:#59676c; font-weight:800; }
 
 .insurance-section {
   padding: 0;
@@ -1508,6 +1520,8 @@ input, select, textarea {
   .organization-card-summary { align-items: flex-start; flex-direction: column; gap: 8px; }
   .organization-card-summary span:last-child { text-align: left; }
   .first-admin-form,.commercial-rows > .plan-edit-row { grid-template-columns: 1fr; }
+  .commercial-contract-grid,.payment-form,.plan-edit-card>div,.plan-edit-card>div:nth-child(2),.commercial-alert-strip { grid-template-columns:1fr; }
+  .commercial-account-banner { flex-direction:column; }
   .document-preview-backdrop { padding: 0; }
   .document-generator { max-height: 100vh; border-radius: 0; }
   .document-generator-layout { grid-template-columns: 1fr; padding: 10px; }

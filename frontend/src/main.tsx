@@ -81,6 +81,7 @@ import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf"
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
 import { OrganizationSettingsManager } from "./features/organization/OrganizationSettingsManager";
 import { OrganizationOnboardingManager } from "./features/organization/OrganizationOnboardingManager";
+import { CommercialAccountBanner } from "./features/organization/CommercialAccountBanner";
 import { OperationalDashboard } from "./features/dashboard/OperationalDashboard";
 import { CommunicationComposer, CommunicationTemplateManager } from "./features/communications/CommunicationCenter";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
@@ -246,6 +247,7 @@ function App() {
         </div>}
       </aside>
       <main>
+        <CommercialAccountBanner profile={profile} />
         {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={profile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={profile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}

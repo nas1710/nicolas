@@ -120,9 +120,12 @@ export type OrganizationSettings = {
 };
 export type OrganizationCenter = { id:string; organization_id:string; name:string; address:string|null; phone:string|null; email:string|null; active:boolean; published:boolean };
 export type OrganizationSummary = { id:string; commercial_name:string; active:boolean };
-export type CommercialPlan = { id:string; name:string; description:string|null; max_professionals:number|null; max_centers:number|null; max_internal_users:number|null; max_monthly_appointments:number|null; patient_portal_enabled:boolean; institutional_pdf_enabled:boolean; communications_enabled:boolean; advanced_dashboard_enabled:boolean; active:boolean };
-export type CommercialOrganization = OrganizationSettings & { slug:string; commercial_status:"CONFIGURACION"|"ACTIVA"|"SUSPENDIDA"|"BAJA"; responsible_name?:string|null; responsible_email?:string|null; responsible_phone?:string|null; commercial_notes?:string|null; plan_id:string|null; starts_on:string|null; renews_on:string|null; expires_on:string|null; subscription_status:string|null; subscription_notes:string|null; users_count:number; professionals_count:number; centers_count:number; administrators_count:number };
+export type CommercialPlan = { id:string; name:string; description:string|null; monthly_price:number|null; currency:"ARS"|"USD"; support_description:string|null; max_professionals:number|null; max_centers:number|null; max_internal_users:number|null; max_monthly_appointments:number|null; patient_portal_enabled:boolean; institutional_pdf_enabled:boolean; communications_enabled:boolean; advanced_dashboard_enabled:boolean; active:boolean };
+export type CommercialPayment = { id:string; paid_on:string; period_from:string|null; period_to:string|null; amount:number; currency:"ARS"|"USD"; payment_method:string|null; reference:string|null; notes:string|null; status:"REGISTRADO"|"ANULADO"; created_at:string };
+export type CommercialHistory = { id:number; event_type:string; notes:string|null; new_data:Record<string,unknown>|null; created_at:string };
+export type CommercialOrganization = OrganizationSettings & { slug:string; commercial_status:"CONFIGURACION"|"ACTIVA"|"SUSPENDIDA"|"BAJA"; responsible_name?:string|null; responsible_email?:string|null; responsible_phone?:string|null; commercial_notes?:string|null; subscription_id:string|null; plan_id:string|null; starts_on:string|null; renews_on:string|null; expires_on:string|null; subscription_status:string|null; subscription_notes:string|null; agreed_amount:number|null; currency:"ARS"|"USD"; payment_method:string|null; commercial_manager:string|null; billing_day:number|null; days_remaining:number|null; payments:CommercialPayment[]; commercial_history:CommercialHistory[]; users_count:number; professionals_count:number; centers_count:number; administrators_count:number };
 export type OrganizationCommercialCatalog = { plans:CommercialPlan[]; organizations:CommercialOrganization[] };
+export type OrganizationCommercialAccount = { organization_id:string; organization_name:string; commercial_status:string; plan_name:string|null; subscription_status:string|null; starts_on:string|null; renews_on:string|null; expires_on:string|null; days_remaining:number|null; agreed_amount:number|null; currency:"ARS"|"USD"; payment_method:string|null; commercial_manager:string|null };
 export type DashboardMetric = { label: string; value: number };
 export type DashboardFilters = { from: string; to: string; professional_id?: string; specialty_id?: string; practice_id?: string; location_id?: string; status?: string; source?: string; validation_status?: string };
 export type DashboardReport = {
@@ -565,7 +568,7 @@ export async function getCurrentProfile() {
   if (error) throw new Error(`No se pudo leer el perfil del usuario: ${error.message}`);
   if (!data) throw new Error("La cuenta existe, pero falta crear su perfil. Ejecuta el parche SQL y habilitala desde Usuarios.");
   if (!data.active) throw new Error("Tu usuario esta pendiente de aprobacion por la medica/admin.");
-  if (!data.is_master && data.organization && (["SUSPENDIDA", "BAJA"].includes(data.organization.commercial_status) || !data.organization.active)) throw new Error("El acceso de la organizacion esta suspendido. Contacta al responsable comercial.");
+  if (!data.is_master && data.role !== "ADMINISTRADOR" && data.organization && (["SUSPENDIDA", "BAJA"].includes(data.organization.commercial_status) || !data.organization.active)) throw new Error("El acceso de la organizacion esta suspendido. Contacta al Administrador de tu organizacion.");
   if (data.role === "SECRETARIA" && !data.location_id) {
     throw new Error("La secretaria todavia no tiene un consultorio asignado.");
   }
@@ -898,6 +901,15 @@ export async function masterUpdateOrganizationCommercial(id:string,input:Record<
 }
 export async function masterSaveCommercialPlan(input:Partial<CommercialPlan>) {
   const { data,error }=await supabase.rpc("master_save_commercial_plan",{p_data:input}); throwIfError(error); return data as CommercialPlan;
+}
+export async function getOrganizationCommercialAccount() {
+  const { data,error }=await supabase.rpc("organization_commercial_account"); throwIfError(error); return data as OrganizationCommercialAccount;
+}
+export async function masterRecordCommercialPayment(organizationId:string,input:Record<string,unknown>) {
+  const { data,error }=await supabase.rpc("master_record_commercial_payment",{p_organization_id:organizationId,p_data:input}); throwIfError(error); return data as CommercialPayment;
+}
+export async function masterVoidCommercialPayment(paymentId:string,reason:string) {
+  const { error }=await supabase.rpc("master_void_commercial_payment",{p_payment_id:paymentId,p_reason:reason}); throwIfError(error);
 }
 
 export async function updateOrganizationSettings(settings: Partial<OrganizationSettings>) {

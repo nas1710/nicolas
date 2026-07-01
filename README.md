@@ -87,6 +87,11 @@ La diferencia entre organizacion, sede y consultorio, junto con el procedimiento
 
 El Maestro dispone del modulo **Clientes** para crear organizaciones, asignar planes editables, crear el primer Administrador y suspender o reactivar el servicio. Cada cliente usa `/?org=slug` y `/turnos?org=slug`; los datos internos se aislan por `organization_id`.
 
+El mismo modulo administra importe acordado, moneda, vencimiento, renovacion y
+cobros manuales. La migracion `supabase/14_commercial_billing.sql` agrega el
+historial comercial y las restricciones prudentes por suspension. El detalle
+operativo esta en [docs/FACTURACION_COMERCIAL.md](docs/FACTURACION_COMERCIAL.md).
+
 `frontend/vercel.json` reescribe estas rutas a la SPA, por lo que pueden abrirse o actualizarse directamente sin error 404.
 
 Ese SQL crea:
