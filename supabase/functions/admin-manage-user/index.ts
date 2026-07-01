@@ -116,6 +116,10 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+      if (locationId) {
+        const { data: validLocation } = await adminClient.from("locations").select("id").eq("id", locationId).eq("organization_id", organizationId).maybeSingle();
+        if (!validLocation) throw new Error("El consultorio no pertenece a la organizacion elegida.");
+      }
 
       const { data: listed, error: listError } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (listError) throw listError;
@@ -275,6 +279,10 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && target.active && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+      if (locationId) {
+        const { data: validLocation } = await adminClient.from("locations").select("id").eq("id", locationId).eq("organization_id", target.organization_id).maybeSingle();
+        if (!validLocation) throw new Error("El consultorio no pertenece a la organizacion del usuario.");
+      }
 
       const authPatch: Record<string, unknown> = { user_metadata: { full_name: fullName } };
       if (email !== target.email.toLowerCase()) {
