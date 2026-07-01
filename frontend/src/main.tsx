@@ -80,6 +80,7 @@ import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalD
 import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
 import { OrganizationSettingsManager } from "./features/organization/OrganizationSettingsManager";
+import { OrganizationOnboardingManager } from "./features/organization/OrganizationOnboardingManager";
 import { OperationalDashboard } from "./features/dashboard/OperationalDashboard";
 import { CommunicationComposer, CommunicationTemplateManager } from "./features/communications/CommunicationCenter";
 import { useBuenosAiresClock } from "./hooks/useBuenosAiresClock";
@@ -90,7 +91,7 @@ import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
 import { canAccessClinical, canManageConfiguration, canManageUsers, roleLabel } from "./utils/permissions";
 import "./styles.css";
 
-type View = "inicio" | "reportes" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios";
+type View = "inicio" | "reportes" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios" | "organizaciones";
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
@@ -219,6 +220,7 @@ function App() {
           <span>Administracion</span>
           <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
           {canManageUsers(profile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
+          {profile.is_master && <NavButton active={view === "organizaciones"} icon="CL" label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
         </nav>
         <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
@@ -229,6 +231,7 @@ function App() {
           <button onClick={() => navigate("tareas")}>Tareas</button>
           <button onClick={() => navigate("ajustes")}>Ajustes</button>
           {canManageUsers(profile) && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
+          {profile.is_master && <button onClick={() => navigate("organizaciones")}>Clientes y planes</button>}
           <button className="danger-action" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
         </div>}
       </aside>
@@ -241,6 +244,7 @@ function App() {
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
         {view === "usuarios" && canManageUsers(profile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
+        {view === "organizaciones" && profile.is_master && <Page title="Clientes" subtitle="Organizaciones, planes y onboarding"><OrganizationOnboardingManager /></Page>}
       </main>
     </div>
   );

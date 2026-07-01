@@ -21,8 +21,15 @@ La agenda y los turnos siguen vinculados al consultorio. La sede organiza consul
 6. En el catalogo comercial, publicar especialidades y practicas y asignarlas a cada profesional.
 7. Asignar los consultorios en los que trabaja cada profesional.
 
-## Preparacion multi-organizacion
+## Alta de un cliente
 
-Las entidades principales incluyen `organization_id` y las nuevas asociaciones no dependen de nombres hardcodeados. La version actual opera una organizacion activa por proyecto; habilitar varias organizaciones en una misma instalacion requerira seleccionar organizacion en login, reforzar todas las policies RLS por pertenencia y aislar Storage por prefijo.
+1. Ingresar como Maestro y abrir `Clientes`.
+2. Crear la organizacion, elegir plan y definir el identificador publico (`slug`).
+3. Crear el primer Administrador desde la ficha del cliente.
+4. El Administrador ingresa y completa marca, sedes, consultorios, catalogo y disponibilidad.
+5. El Maestro cambia el estado de `CONFIGURACION` a `ACTIVA`.
+6. La home queda disponible en `/?org=slug` y la turnera en `/turnos?org=slug`.
 
-No debe activarse ese modo solamente agregando registros a `organizations`: el aislamiento de acceso debe completarse primero.
+Una organizacion `SUSPENDIDA` o `BAJA` no permite acceso operativo ni publicacion. El cambio de plan nunca elimina informacion; los limites impiden nuevas altas criticas y conservan lo existente.
+
+Las migraciones `12_commercial_onboarding.sql` y `13_tenant_isolation.sql` agregan planes, suscripciones, estados, auditoria y aislamiento RLS por `organization_id`.

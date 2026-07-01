@@ -72,6 +72,10 @@ Deno.serve(async request => {
     if (requesterError || !requester?.active || !requesterCanManage) {
       throw new Error("No tenes permisos para administrar accesos.");
     }
+    if (!requester.is_master) {
+      const { data: requesterOrganization } = await adminClient.from("organizations").select("commercial_status").eq("id", requester.organization_id).single();
+      if (!requesterOrganization || ["SUSPENDIDA", "BAJA"].includes(requesterOrganization.commercial_status)) throw new Error("La organizacion no tiene acceso operativo habilitado.");
+    }
 
     const body = await request.json();
     const action = text(body.action);
@@ -116,6 +120,16 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+      const { data: subscription } = await adminClient.from("organization_subscriptions").select("plan:commercial_plans(max_professionals,max_internal_users)").eq("organization_id", organizationId).maybeSingle();
+      const plan = Array.isArray(subscription?.plan) ? subscription?.plan[0] : subscription?.plan;
+      if (plan?.max_internal_users) {
+        const { count } = await adminClient.from("profiles").select("id",{count:"exact",head:true}).eq("organization_id",organizationId).eq("active",true).eq("is_master",false);
+        if ((count || 0) >= plan.max_internal_users) throw new Error("La organizacion alcanzo el limite de usuarios de su plan.");
+      }
+      if ((role === "MEDICO" || role === "MEDICA_ADMIN") && plan?.max_professionals) {
+        const { count } = await adminClient.from("profiles").select("id",{count:"exact",head:true}).eq("organization_id",organizationId).eq("active",true).in("role",["MEDICO","MEDICA_ADMIN"]);
+        if ((count || 0) >= plan.max_professionals) throw new Error("La organizacion alcanzo el limite de profesionales de su plan.");
+      }
       if (locationId) {
         const { data: validLocation } = await adminClient.from("locations").select("id").eq("id", locationId).eq("organization_id", organizationId).maybeSingle();
         if (!validLocation) throw new Error("El consultorio no pertenece a la organizacion elegida.");

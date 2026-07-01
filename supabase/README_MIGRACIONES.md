@@ -27,7 +27,9 @@ Ejecutar en SQL Editor con rol `postgres`:
 10. `supabase/09_internal_user_access.sql`
 11. `supabase/10_security_hardening.sql`
 12. `supabase/11_commercial_branding.sql`
-13. Desplegar las Edge Functions
+13. `supabase/12_commercial_onboarding.sql`
+14. `supabase/13_tenant_isolation.sql`
+15. Desplegar las Edge Functions
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -47,7 +49,9 @@ Para la base publicada de Cardio Ayala:
 10. `supabase/09_internal_user_access.sql`
 11. `supabase/10_security_hardening.sql`
 12. `supabase/11_commercial_branding.sql`
-13. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
+13. `supabase/12_commercial_onboarding.sql`
+14. `supabase/13_tenant_isolation.sql`
+15. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
@@ -73,6 +77,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 ### Tablas
 
 - Seguridad: `profiles`, `audit_logs`.
+- Comercial: `organizations`, `commercial_plans`, `organization_subscriptions`, `centers`.
 - Configuracion: `locations`, `insurance_plans`, `medical_availability`, `holidays`, `specialties`, `practices`, `professional_specialties`, `professional_practices`.
 - Pacientes: `patients`, `patient_locations`.
 - Atencion: `appointments`, `clinical_evolutions`, `administrative_notes`.

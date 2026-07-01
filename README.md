@@ -85,6 +85,8 @@ a multiples clientes sin modificar los datos existentes.
 
 La diferencia entre organizacion, sede y consultorio, junto con el procedimiento inicial, se explica en [docs/CONFIGURACION_COMERCIAL.md](docs/CONFIGURACION_COMERCIAL.md).
 
+El Maestro dispone del modulo **Clientes** para crear organizaciones, asignar planes editables, crear el primer Administrador y suspender o reactivar el servicio. Cada cliente usa `/?org=slug` y `/turnos?org=slug`; los datos internos se aislan por `organization_id`.
+
 `frontend/vercel.json` reescribe estas rutas a la SPA, por lo que pueden abrirse o actualizarse directamente sin error 404.
 
 Ese SQL crea:

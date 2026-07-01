@@ -23,6 +23,7 @@ import { toDateInputValue } from "../utils/dates";
 import { documentTypeOptions } from "../utils/identity";
 
 export function PublicBookingPage() {
+  const organizationSlug = new URLSearchParams(window.location.search).get("org") || "";
   const officialClock = useBuenosAiresClock();
   const today = officialClock.today;
   const maxDateValue = new Date(`${today}T12:00:00`);
@@ -76,7 +77,7 @@ export function PublicBookingPage() {
   }, [doctorId, duration]);
 
   useEffect(() => {
-    Promise.all([getPublicCommercialCatalog(), listPublicBookingInsurancePlans(), getOrganizationSettings()])
+    Promise.all([getPublicCommercialCatalog(organizationSlug), listPublicBookingInsurancePlans(organizationSlug), getOrganizationSettings(organizationSlug)])
       .then(([catalogData, planItems, organizationData]) => {
         setCatalog(catalogData);
         setInsurancePlans(planItems);
@@ -86,7 +87,7 @@ export function PublicBookingPage() {
       })
       .catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda publica."))
       .finally(() => setLoadingCatalog(false));
-  }, []);
+  }, [organizationSlug]);
 
   useEffect(() => {
     if (!doctorId || practiceIds.length === 0 || duration <= 0) {

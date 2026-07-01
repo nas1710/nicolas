@@ -73,6 +73,7 @@ export type Profile = {
   institutional_footer?: string | null;
   signature_path?: string | null;
   organization_id?: string | null;
+  organization?: { id:string; commercial_name:string; commercial_status:string; active:boolean } | null;
   location?: Location | null;
 };
 
@@ -110,7 +111,7 @@ export type CommercialPractice = PublicPractice & { active: boolean; published: 
 export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[] };
 export type CommercialAdminCatalog = { specialties: CommercialSpecialty[]; practices: CommercialPractice[]; professionals: CommercialProfessional[] };
 export type OrganizationSettings = {
-  id: string; commercial_name: string; legal_name?: string | null; tax_id?: string | null; description?: string | null;
+  id: string; slug?: string | null; commercial_name: string; legal_name?: string | null; tax_id?: string | null; description?: string | null;
   logo_path?: string | null; primary_color: string; secondary_color: string; phone?: string | null; whatsapp?: string | null;
   email?: string | null; main_address?: string | null; social_links?: Record<string,string>; welcome_title?: string | null;
   welcome_text?: string | null; legal_text?: string | null; booking_terms?: string | null; insurance_information?: string | null;
@@ -119,6 +120,9 @@ export type OrganizationSettings = {
 };
 export type OrganizationCenter = { id:string; organization_id:string; name:string; address:string|null; phone:string|null; email:string|null; active:boolean; published:boolean };
 export type OrganizationSummary = { id:string; commercial_name:string; active:boolean };
+export type CommercialPlan = { id:string; name:string; description:string|null; max_professionals:number|null; max_centers:number|null; max_internal_users:number|null; max_monthly_appointments:number|null; patient_portal_enabled:boolean; institutional_pdf_enabled:boolean; communications_enabled:boolean; advanced_dashboard_enabled:boolean; active:boolean };
+export type CommercialOrganization = OrganizationSettings & { slug:string; commercial_status:"CONFIGURACION"|"ACTIVA"|"SUSPENDIDA"|"BAJA"; responsible_name?:string|null; responsible_email?:string|null; responsible_phone?:string|null; commercial_notes?:string|null; plan_id:string|null; starts_on:string|null; renews_on:string|null; expires_on:string|null; subscription_status:string|null; subscription_notes:string|null; users_count:number; professionals_count:number; centers_count:number; administrators_count:number };
+export type OrganizationCommercialCatalog = { plans:CommercialPlan[]; organizations:CommercialOrganization[] };
 export type DashboardMetric = { label: string; value: number };
 export type DashboardFilters = { from: string; to: string; professional_id?: string; specialty_id?: string; practice_id?: string; location_id?: string; status?: string; source?: string; validation_status?: string };
 export type DashboardReport = {
@@ -554,13 +558,14 @@ export async function getCurrentProfile() {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("*, location:locations!profiles_location_id_fkey(*)")
+    .select("*, location:locations!profiles_location_id_fkey(*), organization:organizations!profiles_organization_id_fkey(id,commercial_name,commercial_status,active)")
     .eq("id", sessionData.session.user.id)
     .maybeSingle();
 
   if (error) throw new Error(`No se pudo leer el perfil del usuario: ${error.message}`);
   if (!data) throw new Error("La cuenta existe, pero falta crear su perfil. Ejecuta el parche SQL y habilitala desde Usuarios.");
   if (!data.active) throw new Error("Tu usuario esta pendiente de aprobacion por la medica/admin.");
+  if (!data.is_master && data.organization && (["SUSPENDIDA", "BAJA"].includes(data.organization.commercial_status) || !data.organization.active)) throw new Error("El acceso de la organizacion esta suspendido. Contacta al responsable comercial.");
   if (data.role === "SECRETARIA" && !data.location_id) {
     throw new Error("La secretaria todavia no tiene un consultorio asignado.");
   }
@@ -865,17 +870,34 @@ export async function listPublicBookingDoctors() {
   return (data || []) as PublicBookingDoctor[];
 }
 
-export async function getPublicCommercialCatalog() {
-  const { data, error } = await supabase.rpc("public_commercial_catalog");
+export async function getPublicCommercialCatalog(organizationSlug?: string) {
+  const { data, error } = organizationSlug
+    ? await supabase.rpc("public_commercial_catalog_for_slug", { p_slug: organizationSlug })
+    : await supabase.rpc("public_commercial_catalog");
   throwIfError(error);
   const value = data as Partial<PublicCommercialCatalog> | null;
   return { specialties: value?.specialties || [], practices: value?.practices || [], professionals: value?.professionals || [], locations: value?.locations || [] } as PublicCommercialCatalog;
 }
 
-export async function getOrganizationSettings() {
-  const { data, error } = await supabase.rpc("public_organization_settings");
+export async function getOrganizationSettings(organizationSlug?: string) {
+  const { data, error } = organizationSlug
+    ? await supabase.rpc("public_organization_settings_for_slug", { p_slug: organizationSlug })
+    : await supabase.rpc("public_organization_settings");
   throwIfError(error);
   return data as OrganizationSettings;
+}
+
+export async function getMasterOrganizationCatalog() {
+  const { data,error }=await supabase.rpc("master_organization_catalog"); throwIfError(error); return data as OrganizationCommercialCatalog;
+}
+export async function masterCreateOrganization(input: Record<string,unknown>) {
+  const { data,error }=await supabase.rpc("master_create_organization",{p_data:input}); throwIfError(error); return data as CommercialOrganization;
+}
+export async function masterUpdateOrganizationCommercial(id:string,input:Record<string,unknown>) {
+  const { error }=await supabase.rpc("master_update_organization_commercial",{p_organization_id:id,p_data:input}); throwIfError(error);
+}
+export async function masterSaveCommercialPlan(input:Partial<CommercialPlan>) {
+  const { data,error }=await supabase.rpc("master_save_commercial_plan",{p_data:input}); throwIfError(error); return data as CommercialPlan;
 }
 
 export async function updateOrganizationSettings(settings: Partial<OrganizationSettings>) {
@@ -972,8 +994,10 @@ export async function listPublicBookingDates(doctorId: string, from: string, to:
   return (data || []) as PublicBookingDate[];
 }
 
-export async function listPublicBookingInsurancePlans() {
-  const { data, error } = await supabase.rpc("public_booking_insurance_plans");
+export async function listPublicBookingInsurancePlans(organizationSlug?:string) {
+  const { data, error } = organizationSlug
+    ? await supabase.rpc("public_booking_insurance_plans_for_slug",{p_slug:organizationSlug})
+    : await supabase.rpc("public_booking_insurance_plans");
   if (error?.message?.includes("schema cache")) {
     throw new Error("Las obras sociales se estan configurando. Volve a intentar en unos minutos.");
   }
