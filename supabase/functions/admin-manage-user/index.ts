@@ -24,6 +24,14 @@ function json(body: unknown, headers: Record<string, string>, status = 200) {
   });
 }
 
+function safeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/relation|column|schema|constraint|duplicate key|violates|sql|jwt|token|stack/i.test(message)) {
+    return "No se pudo completar la operacion de usuarios.";
+  }
+  return message || "No se pudo administrar el usuario.";
+}
+
 Deno.serve(async request => {
   const configuredOrigins = (Deno.env.get("CORS_ORIGIN") || "https://cardioayala.vercel.app,http://localhost:5173,http://127.0.0.1:5174")
     .split(",")
@@ -37,6 +45,9 @@ Deno.serve(async request => {
   };
 
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method !== "POST" || (requestOrigin && !configuredOrigins.includes(requestOrigin))) {
+    return json({ error: "Solicitud no permitida." }, corsHeaders, 403);
+  }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -296,6 +307,7 @@ Deno.serve(async request => {
 
     throw new Error("Accion no valida.");
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "No se pudo administrar el usuario." }, corsHeaders, 400);
+    console.error(error);
+    return json({ error: safeErrorMessage(error) }, corsHeaders, 400);
   }
 });

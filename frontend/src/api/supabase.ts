@@ -486,6 +486,7 @@ export async function signIn(email: string, password: string, remember = true) {
   try {
     const profile = await getCurrentProfile();
     if (!profile) throw new Error("La cuenta ingreso correctamente, pero no tiene un perfil habilitado.");
+    await supabase.rpc("record_session_event", { p_action: "LOGIN" });
     return profile;
   } catch (error) {
     await supabase.auth.signOut();
@@ -530,6 +531,7 @@ export async function resendConfirmationEmail(email: string) {
 }
 
 export async function signOut() {
+  await supabase.rpc("record_session_event", { p_action: "LOGOUT" });
   await supabase.auth.signOut();
 }
 

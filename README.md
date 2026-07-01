@@ -370,6 +370,10 @@ Probar con una cuenta `MEDICA_ADMIN`:
 
 ## Backup/exportacion
 
+La estrategia pre-produccion, restauracion y checklist de seguridad estan en
+`docs/SEGURIDAD_BACKUPS.md`. El portal de paciente no debe considerarse
+habilitado hasta completar su implementacion y auditoria RLS.
+
 Opciones gratuitas/bajo costo:
 
 1. Supabase Dashboard > Table Editor > Export CSV por tabla.
