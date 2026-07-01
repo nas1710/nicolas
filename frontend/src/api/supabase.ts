@@ -550,7 +550,7 @@ export async function getCurrentProfile() {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("*, location:locations(*)")
+    .select("*, location:locations!profiles_location_id_fkey(*)")
     .eq("id", sessionData.session.user.id)
     .maybeSingle();
 
