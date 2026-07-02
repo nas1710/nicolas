@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from "react";
 
-export function NavButton({ active, icon, label, hint, onClick }: { active: boolean; icon: string; label: string; hint: string; onClick: () => void }) {
+export function NavButton({ active, icon, label, hint, onClick }: { active: boolean; icon: ReactNode; label: string; hint: string; onClick: () => void }) {
   return (
     <button className={active ? "nav-item active" : "nav-item"} onClick={onClick} aria-label={label} title={label}>
       <span className="nav-icon">{icon}</span>

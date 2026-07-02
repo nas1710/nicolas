@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Building2, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UsersRound } from "lucide-react";
 import {
   Appointment,
   AppointmentStatus,
@@ -258,17 +259,17 @@ function App() {
         </button>
         <nav className="nav-group">
           <span>Trabajo</span>
-          <NavButton active={view === "inicio"} icon="IN" label="Inicio" hint="Resumen" onClick={() => navigate("inicio")} />
-          <NavButton active={view === "agenda"} icon="AG" label="Agenda" hint="Dia y semana" onClick={() => navigate("agenda")} />
-          <NavButton active={view === "pacientes"} icon="PA" label="Pacientes" hint="Historia clinica" onClick={() => navigate("pacientes")} />
-          <NavButton active={view === "estudios"} icon="ES" label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />
-          <NavButton active={view === "tareas"} icon="TA" label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />
+          <NavButton active={view === "inicio"} icon={<LayoutDashboard size={18} />} label="Inicio" hint="Resumen" onClick={() => navigate("inicio")} />
+          <NavButton active={view === "agenda"} icon={<CalendarDays size={18} />} label="Agenda" hint="Dia y semana" onClick={() => navigate("agenda")} />
+          <NavButton active={view === "pacientes"} icon={<UsersRound size={18} />} label="Pacientes" hint="Historia clinica" onClick={() => navigate("pacientes")} />
+          <NavButton active={view === "estudios"} icon={<FileSignature size={18} />} label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />
+          <NavButton active={view === "tareas"} icon={<ClipboardList size={18} />} label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />
         </nav>
         <nav className="nav-group">
           <span>Administracion</span>
-          {canManageConfiguration(operationalProfile) && <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />}
-          {canManageUsers(operationalProfile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
-          {operationalProfile.is_master && <NavButton active={view === "organizaciones"} icon="CL" label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
+          {canManageConfiguration(operationalProfile) && <NavButton active={view === "ajustes"} icon={<Settings2 size={18} />} label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />}
+          {canManageUsers(operationalProfile) && <NavButton active={view === "usuarios"} icon={<ShieldCheck size={18} />} label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
+          {operationalProfile.is_master && <NavButton active={view === "organizaciones"} icon={<Building2 size={18} />} label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
         </nav>
         <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => { window.history.replaceState(null, "", "/login"); setProfile(null); })}>Cerrar sesion</button>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
@@ -904,7 +905,7 @@ function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient;
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
           <span>
             <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>} {patient.validation_status === "PENDIENTE" && <em className="pending-validation-badge">Pendiente de validacion</em>}</strong>
-            <small className="patient-document-line">{formatPatientDocument(patient)}{patient.document && <span role="button" tabIndex={0} className="copy-document-button" title="Copiar numero de documento" aria-label={`Copiar documento de ${patient.first_name} ${patient.last_name}`} onClick={event => { event.stopPropagation(); void copyDocument(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); void copyDocument(); } }}>{copied ? "Copiado" : "Copiar"}</span>}</small>
+            <small className="patient-document-line">{formatPatientDocument(patient)}{patient.document && <span role="button" tabIndex={0} className="copy-document-button icon-only" title={copied ? "Copiado" : "Copiar número de documento"} aria-label={`Copiar documento de ${patient.first_name} ${patient.last_name}`} onClick={event => { event.stopPropagation(); void copyDocument(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); void copyDocument(); } }}>{copied ? <Check size={16} /> : <Copy size={16} />}</span>}</small>
           </span>
         </button>
         <div className="patient-quick-data">
@@ -2373,17 +2374,17 @@ function Settings({ profile }: { profile: Profile }) {
   const [professionals, setProfessionals] = useState<Profile[]>([]);
   type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
-  const modules: Array<{ id: SettingsModule; label: string; hint: string }> = [
+  const modules: Array<{ id: SettingsModule; label: string; hint: string; icon: React.ElementType }> = [
     ...(isOrganizationAdmin ? [
-      { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes" },
-      { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas" },
-      { id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion" },
-      { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes" },
-      { id: "auditoria" as const, label: "Auditoria", hint: "Ingresos y actividad" }
+      { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes", icon: Building2 },
+      { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas", icon: Stethoscope },
+      { id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion", icon: MapPin },
+      { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes", icon: Megaphone },
+      { id: "auditoria" as const, label: "Auditoria", hint: "Ingresos y actividad", icon: ShieldCheck }
     ] : []),
-    { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables" },
-    { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles" },
-    ...(canAccessClinical(profile) ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos" }] : [])
+    { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables", icon: CalendarDays },
+    { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles", icon: ClipboardList },
+    ...(canAccessClinical(profile) ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos", icon: FileSignature }] : [])
   ];
   const [module, setModule] = useState<SettingsModule>(isOrganizationAdmin ? "organizacion" : "agenda");
 
@@ -2403,7 +2404,7 @@ function Settings({ profile }: { profile: Profile }) {
       {data && (
         <div className="settings-workspace">
           <nav className="settings-modules" aria-label="Modulos de ajustes">
-            {modules.map(item => <button key={item.id} type="button" className={module === item.id ? "active" : ""} onClick={() => setModule(item.id)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
+            {modules.map(item => { const Icon = item.icon; return <button key={item.id} type="button" className={module === item.id ? "active" : ""} onClick={() => setModule(item.id)}><Icon size={19} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>; })}
           </nav>
           <div className="settings-module-content">
             {module === "organizacion" && isOrganizationAdmin && <OrganizationSettingsManager />}
@@ -2595,9 +2596,9 @@ function LocationRow({ location, canEdit, onSaved }: { location: Location; canEd
 function InsuranceManager({ plans, canEdit, onSaved }: { plans: InsurancePlan[]; canEdit: boolean; onSaved: () => Promise<void> }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [query, setQuery] = useState("");
-  const [visibleCount, setVisibleCount] = useState(10);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const filteredPlans = [...plans]
@@ -2632,7 +2633,7 @@ function InsuranceManager({ plans, canEdit, onSaved }: { plans: InsurancePlan[];
             type="search"
             placeholder="Buscar obra social"
             value={query}
-            onChange={event => { setQuery(event.target.value); setVisibleCount(10); }}
+            onChange={event => { setQuery(event.target.value); setVisibleCount(20); }}
           />
           {canEdit && (
             <form className="insurance-add-form" onSubmit={submit}>
@@ -2659,8 +2660,8 @@ function InsuranceManager({ plans, canEdit, onSaved }: { plans: InsurancePlan[];
         </div>
 
         {visibleCount < filteredPlans.length && (
-          <button type="button" className="secondary-action insurance-more" onClick={() => setVisibleCount(count => count + 10)}>
-            Ver 10 mas
+          <button type="button" className="secondary-action insurance-more" onClick={() => setVisibleCount(count => count + 20)}>
+            Ver 20 más
           </button>
         )}
       </div>}
@@ -2684,7 +2685,7 @@ function InsuranceRow({ plan, canEdit, editing, onEdit, onClose, onSaved }: {
       <div className="insurance-compact-row">
         <strong>{plan.name}</strong>
         <span className={plan.active ? "badge ok" : "badge muted"}>{plan.active ? "Activa" : "Baja"}</span>
-        {canEdit && <button type="button" className="insurance-edit" onClick={onEdit}>Editar</button>}
+        {canEdit && <button type="button" className="icon-button insurance-edit" title="Editar obra social" aria-label={`Editar ${plan.name}`} onClick={onEdit}><Pencil size={16} /></button>}
       </div>
     );
   }
@@ -2721,6 +2722,10 @@ function AvailabilityManager({ locations, availability, professionals, currentPr
     setSelectedDoctorId(selectableProfessionals[0].id);
     setForm(current => ({ ...current, doctor_id: selectableProfessionals[0].id }));
   }, [selectedDoctorId, selectableProfessionals]);
+  const selectedAvailability = availability
+    .filter(item => !selectedDoctorId || item.doctor_id === selectedDoctorId)
+    .sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time));
+  const weekDays = [1, 2, 3, 4, 5, 6, 0];
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -2766,15 +2771,18 @@ function AvailabilityManager({ locations, availability, professionals, currentPr
           {error && <p className="error">{error}</p>}
         </form>
       )}
-      <div className="list compact-list">
-        {availability.filter(item => !selectedDoctorId || item.doctor_id === selectedDoctorId).map(item => <AvailabilityRow key={item.id} item={item} locations={activeLocations} professionals={selectableProfessionals} canEdit={canEdit} onSaved={onSaved} />)}
-        {!availability.some(item => !selectedDoctorId || item.doctor_id === selectedDoctorId) && <p className="empty-day">Este profesional todavía no tiene horarios configurados.</p>}
+      <div className="availability-week-grid">
+        {weekDays.map(day => { const dayItems = selectedAvailability.filter(item => item.weekday === day); return <section key={day} className={dayItems.length ? "availability-day-column has-slots" : "availability-day-column"}>
+          <header><strong>{weekdayName(day)}</strong><small>{dayItems.length ? `${dayItems.length} ${dayItems.length === 1 ? "bloque" : "bloques"}` : "Sin atención"}</small></header>
+          <div>{dayItems.map(item => <AvailabilityRow key={item.id} item={item} locations={activeLocations} professionals={selectableProfessionals} canEdit={canEdit} onSaved={onSaved} />)}</div>
+        </section>; })}
       </div>
     </section>
   );
 }
 
 function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: { item: MedicalAvailability; locations: Location[]; professionals: Profile[]; canEdit: boolean; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<MedicalAvailabilityInput>({
     location_id: item.location_id,
     doctor_id: item.doctor_id,
@@ -2785,8 +2793,13 @@ function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: {
     enabled: item.enabled
   });
 
+  if (!editing) return <article className={form.enabled ? "availability-slot-card" : "availability-slot-card inactive"}>
+    <div><strong>{form.start_time.slice(0, 5)}–{form.end_time.slice(0, 5)}</strong><small>{locations.find(location => location.id === form.location_id)?.name || "Consultorio no disponible"}</small><span>Cada {form.slot_interval_min} min</span></div>
+    {canEdit && <button type="button" className="icon-button" title="Editar horario" aria-label="Editar horario" onClick={() => setEditing(true)}><Pencil size={16} /></button>}
+  </article>;
+
   return (
-    <div className="editable-row availability-row">
+    <div className="editable-row availability-row editing">
       <select value={form.doctor_id || ""} onChange={e => setForm({ ...form, doctor_id: e.target.value })} disabled={!canEdit}>
         {professionals.map(professional => <option key={professional.id} value={professional.id}>{professionalOptionLabel(professional)}</option>)}
       </select>
@@ -2804,8 +2817,9 @@ function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: {
       <span className={form.enabled ? "badge ok" : "badge muted"}>{form.enabled ? "Activo" : "Inactivo"}</span>
       {canEdit && (
         <div className="row-actions">
-          <button onClick={async () => { await updateAvailability(item.id, form); await onSaved(); }}>Guardar</button>
-          <button onClick={async () => { await updateAvailability(item.id, { ...form, enabled: !form.enabled }); await onSaved(); }}>{form.enabled ? "Desactivar" : "Activar"}</button>
+          <button onClick={async () => { await updateAvailability(item.id, form); await onSaved(); setEditing(false); }}>Guardar</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancelar</button>
+          <button onClick={async () => { await updateAvailability(item.id, { ...form, enabled: !form.enabled }); await onSaved(); setEditing(false); }}>{form.enabled ? "Desactivar" : "Activar"}</button>
         </div>
       )}
     </div>
