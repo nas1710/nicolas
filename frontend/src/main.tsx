@@ -8,6 +8,7 @@ import {
   createAdministrativeNote,
   createAvailability,
   createClinicalEvolution,
+  ClinicalEvolution,
   createHoliday,
   createInsurancePlan,
   createLocation,
@@ -59,6 +60,8 @@ import {
   uploadPatientAttachment,
   createSignedAttachmentUrl,
   Attachment
+  ,AuditLog
+  ,listAuditLogs
 } from "./api/supabase";
 import { Modal, NavButton, Page, Stat, Table } from "./components/ui";
 import {
@@ -77,7 +80,7 @@ import {
 import { Login, PasswordRecovery } from "./features/auth/AuthScreens";
 import { UserManager } from "./features/users/UserManager";
 import { InstitutionalDocumentDialog } from "./features/documents/InstitutionalDocumentDialog";
-import { downloadInstitutionalPdf } from "./features/documents/institutionalPdf";
+import { printInstitutionalPdf } from "./features/documents/institutionalPdf";
 import { CommercialCatalogManager } from "./features/commercial/CommercialCatalogManager";
 import { OrganizationSettingsManager } from "./features/organization/OrganizationSettingsManager";
 import { OrganizationOnboardingManager } from "./features/organization/OrganizationOnboardingManager";
@@ -89,7 +92,7 @@ import { PublicBookingPage } from "./pages/PublicBookingPage";
 import { PublicHomePage } from "./pages/PublicHomePage";
 import { toBuenosAiresDatetimeLocal, toDateInputValue } from "./utils/dates";
 import { documentTypeLabel, documentTypeOptions } from "./utils/identity";
-import { canAccessClinical, canManageConfiguration, canManageUsers, roleLabel } from "./utils/permissions";
+import { canAccessClinical, canManageConfiguration, canManageUsers, isDoctorRole, roleLabel } from "./utils/permissions";
 import "./styles.css";
 
 type View = "inicio" | "reportes" | "agenda" | "pacientes" | "estudios" | "tareas" | "ajustes" | "usuarios" | "organizaciones";
@@ -121,6 +124,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function App() {
   const routePath = window.location.pathname.replace(/\/+$/, "") || "/";
   const publicBookingPath = routePath === "/turnos";
+  const internalAppPath = routePath === "/app";
   const authCallback = window.location.hash.includes("type=recovery") || window.location.hash.includes("error=");
   const publicHomePath = routePath === "/" && !authCallback;
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -134,6 +138,11 @@ function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [authLinkError, setAuthLinkError] = useState("");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [simulatedRole, setSimulatedRole] = useState<"" | "MEDICO" | "SECRETARIA">("");
+  const [simulatedLocationId, setSimulatedLocationId] = useState("");
+  const [simulationLocations, setSimulationLocations] = useState<Location[]>([]);
+  const [simulatedProfessionalId, setSimulatedProfessionalId] = useState("");
+  const [simulationProfessionals, setSimulationProfessionals] = useState<Profile[]>([]);
 
   useEffect(() => {
     if (publicBookingPath || publicHomePath) {
@@ -165,20 +174,41 @@ function App() {
 
   useEffect(() => {
     if (!profile) return;
+    if (!internalAppPath) window.history.replaceState(null, "", `/app${window.location.search}`);
     setView("inicio");
     setSelectedPatientId(null);
     setNewAppointmentKey(0);
     setNewPatientKey(0);
     setMobileMoreOpen(false);
     setViewResetKey(key => key + 1);
-  }, [profile?.id]);
+    setSimulatedRole("");
+    setSimulatedLocationId("");
+    setSimulatedProfessionalId("");
+    if (profile.is_master || profile.role === "ADMINISTRADOR") {
+      getConfiguration().then(configuration => setSimulationLocations(configuration.locations.filter(location => location.active))).catch(() => setSimulationLocations([]));
+      listProfiles().then(users => setSimulationProfessionals(users.filter(user => user.active && isDoctorRole(user.role)))).catch(() => setSimulationProfessionals([]));
+    }
+  }, [profile?.id, internalAppPath]);
 
   if (publicHomePath) return <PublicHomePage />;
   if (publicBookingPath) return <PublicBookingPage />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
   if (passwordRecovery) return <PasswordRecovery onDone={nextProfile => { setProfile(nextProfile); setPasswordRecovery(false); }} />;
-  if (!profile) return <Login initialError={authLinkError} onLogin={setProfile} />;
+  if (!profile) return <Login initialError={authLinkError} onLogin={nextProfile => {
+    window.history.replaceState(null, "", `/app${window.location.search}`);
+    setProfile(nextProfile);
+  }} />;
   if (profile.must_change_password) return <PasswordRecovery forced onDone={nextProfile => setProfile(nextProfile)} />;
+
+  const operationalProfile: Profile = simulatedRole ? {
+    ...profile,
+    role: simulatedRole,
+    is_master: false,
+    simulated: true,
+    simulated_professional_id: simulatedRole === "MEDICO" ? simulatedProfessionalId || simulationProfessionals[0]?.id || null : null,
+    location_id: simulatedRole === "SECRETARIA" ? simulatedLocationId || simulationLocations[0]?.id || null : null,
+    location: simulatedRole === "SECRETARIA" ? simulationLocations.find(location => location.id === (simulatedLocationId || simulationLocations[0]?.id)) || null : null
+  } : profile;
 
   const navigate = (next: View) => {
     setView(next);
@@ -212,9 +242,16 @@ function App() {
           <span className="brand">SP</span>
           <div>
             <strong>{profile.full_name}</strong>
-            <span>{roleLabel(profile)}</span>
+            <span>{simulatedRole ? `Vista ${roleLabel(operationalProfile)}` : roleLabel(profile)}</span>
           </div>
         </button>
+        {(profile.is_master || profile.role === "ADMINISTRADOR") && <div className="role-simulator">
+          <span>Vista operativa</span>
+          <div><button type="button" className={!simulatedRole ? "active" : ""} onClick={() => setSimulatedRole("")}>Admin</button><button type="button" className={simulatedRole === "MEDICO" ? "active" : ""} onClick={() => setSimulatedRole("MEDICO")}>Medico</button><button type="button" className={simulatedRole === "SECRETARIA" ? "active" : ""} onClick={() => setSimulatedRole("SECRETARIA")}>Secretaria</button></div>
+          {simulatedRole === "SECRETARIA" && <select aria-label="Consultorio para vista Secretaria" value={simulatedLocationId || simulationLocations[0]?.id || ""} onChange={event => setSimulatedLocationId(event.target.value)}>{simulationLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
+          {simulatedRole === "MEDICO" && <select aria-label="Profesional para vista Medico" value={simulatedProfessionalId || simulationProfessionals[0]?.id || ""} onChange={event => setSimulatedProfessionalId(event.target.value)}>{simulationProfessionals.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}</select>}
+          {simulatedRole && <small>Simulacion visual; conserva tu identidad real.</small>}
+        </div>}
         <button className="nav-cta" onClick={navigateNewAppointment}>
           <span>+</span>
           Nuevo turno
@@ -229,40 +266,40 @@ function App() {
         </nav>
         <nav className="nav-group">
           <span>Administracion</span>
-          <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />
-          {canManageUsers(profile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
-          {profile.is_master && <NavButton active={view === "organizaciones"} icon="CL" label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
+          {canManageConfiguration(operationalProfile) && <NavButton active={view === "ajustes"} icon="AJ" label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />}
+          {canManageUsers(operationalProfile) && <NavButton active={view === "usuarios"} icon="US" label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
+          {operationalProfile.is_master && <NavButton active={view === "organizaciones"} icon="CL" label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
         </nav>
-        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
+        <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => { window.history.replaceState(null, "", "/login"); setProfile(null); })}>Cerrar sesion</button>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
           <span className="nav-icon">MA</span><span>Mas</span>
         </button>
         {mobileMoreOpen && <div className="mobile-more-menu">
           <button onClick={() => navigate("estudios")}>Estudios y documentos</button>
           <button onClick={() => navigate("tareas")}>Tareas</button>
-          <button onClick={() => navigate("ajustes")}>Ajustes</button>
-          {canManageUsers(profile) && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
-          {profile.is_master && <button onClick={() => navigate("organizaciones")}>Clientes y planes</button>}
-          <button className="danger-action" onClick={() => signOut().then(() => setProfile(null))}>Cerrar sesion</button>
+          {canManageConfiguration(operationalProfile) && <button onClick={() => navigate("ajustes")}>Ajustes</button>}
+          {canManageUsers(operationalProfile) && <button onClick={() => navigate("usuarios")}>Usuarios</button>}
+          {operationalProfile.is_master && <button onClick={() => navigate("organizaciones")}>Clientes y planes</button>}
+          <button className="danger-action" onClick={() => signOut().then(() => { window.history.replaceState(null, "", "/login"); setProfile(null); })}>Cerrar sesion</button>
         </div>}
       </aside>
       <main>
         <CommercialAccountBanner profile={profile} />
-        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={profile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={profile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={profile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
+        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} profile={operationalProfile} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={operationalProfile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={operationalProfile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={operationalProfile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
         {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
-        {view === "ajustes" && <Settings key={`ajustes-${viewResetKey}`} profile={profile} />}
-        {view === "usuarios" && canManageUsers(profile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
-        {view === "organizaciones" && profile.is_master && <Page title="Clientes" subtitle="Organizaciones, planes y onboarding"><OrganizationOnboardingManager /></Page>}
+        {view === "ajustes" && canManageConfiguration(operationalProfile) && <Settings key={`ajustes-${viewResetKey}`} profile={operationalProfile} />}
+        {view === "usuarios" && canManageUsers(operationalProfile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
+        {view === "organizaciones" && operationalProfile.is_master && <Page title="Clientes" subtitle="Organizaciones, planes y onboarding"><OrganizationOnboardingManager /></Page>}
       </main>
     </div>
   );
 }
 
-function Dashboard({ onNavigate, onReports, onNewPatient, onOpenPatient }: { onNavigate: (view: View) => void; onReports: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void }) {
+function Dashboard({ profile, onNavigate, onReports, onNewPatient, onOpenPatient }: { profile: Profile; onNavigate: (view: View) => void; onReports: () => void; onNewPatient: () => void; onOpenPatient: (id: string) => void }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -270,7 +307,8 @@ function Dashboard({ onNavigate, onReports, onNewPatient, onOpenPatient }: { onN
 
   useEffect(() => {
     Promise.all([listAppointments(), listPatients(), listReports()]).then(([nextAppointments, nextPatients, nextReports]) => {
-      setAppointments(nextAppointments);
+      const secretaryLocation = profile.simulated && profile.role === "SECRETARIA" ? profile.location_id : null;
+      setAppointments(secretaryLocation ? nextAppointments.filter(item => item.location_id === secretaryLocation) : nextAppointments);
       setPatients(nextPatients);
       setReports(nextReports);
     });
@@ -1385,8 +1423,9 @@ function getEligibleAvailability(profile: Profile, slots: MedicalAvailability[])
   return slots.filter(slot => {
     if (!slot.enabled) return false;
     if (profile.role === "SECRETARIA") return slot.location_id === profile.location_id;
-    if (profile.is_master) return true;
-    return !slot.doctor_id || slot.doctor_id === profile.id;
+    if (profile.is_master || profile.role === "ADMINISTRADOR") return true;
+    const professionalId = profile.simulated_professional_id || profile.id;
+    return !slot.doctor_id || slot.doctor_id === professionalId;
   });
 }
 
@@ -1585,7 +1624,19 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
   const [currentPatient, setCurrentPatient] = useState(patient);
   const [panel, setPanel] = useState<"historia" | "datos" | "adjuntos" | "nota" | "enviar">("historia");
   const [showDocumentGenerator, setShowDocumentGenerator] = useState(false);
+  const [historyProfessionalId, setHistoryProfessionalId] = useState("all");
+  const [historyOrder, setHistoryOrder] = useState<"desc" | "asc">("desc");
+  const [showEvolutionForm, setShowEvolutionForm] = useState(false);
   const clinicalHistory = [...(currentPatient.clinical_evolutions || [])].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+  const historyProfessionals = Array.from(new Map(clinicalHistory.filter(item => item.author).map(item => [item.created_by || item.author!.id, item.author!])).entries());
+  const visibleClinicalHistory = historyProfessionalId === "all" ? clinicalHistory : clinicalHistory.filter(item => (item.created_by || item.author?.id) === historyProfessionalId);
+  const printablePatient = historyProfessionalId === "all" ? currentPatient : { ...currentPatient, clinical_evolutions: visibleClinicalHistory };
+  const clinicalTimelineItems = [
+    ...visibleClinicalHistory.map(item => ({ id: `e-${item.id}`, date: item.occurred_at, kind: "evolution" as const, evolution: item })),
+    ...(currentPatient.studies || []).map(item => ({ id: `s-${item.id}`, date: item.performed_at || "", kind: "study" as const, study: item })).filter(item => item.date),
+    ...(currentPatient.attachments || []).map(item => ({ id: `a-${item.id}`, date: item.created_at, kind: "attachment" as const, attachment: item })),
+    ...(currentPatient.appointments || []).filter(item => item.status !== "CANCELADO" && new Date(item.starts_at).getTime() <= Date.now()).map(item => ({ id: `t-${item.id}`, date: item.starts_at, kind: "appointment" as const, appointment: item }))
+  ].sort((a, b) => (historyOrder === "asc" ? 1 : -1) * (new Date(a.date).getTime() - new Date(b.date).getTime()));
 
   async function refresh() {
     setCurrentPatient(await getPatient(patient.id));
@@ -1607,7 +1658,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       subtitle="Ficha clinica del paciente"
       actions={
         <>
-          {canAccessClinical(profile) && <button className="primary" onClick={() => void printClinicalHistory(currentPatient, profile)}>Descargar historia PDF</button>}
+          {canAccessClinical(profile) && <button className="primary" onClick={() => void printClinicalHistory(printablePatient, profile)}>Imprimir historia</button>}
           {canAccessClinical(profile) && <button className="secondary-action" onClick={() => setShowDocumentGenerator(true)}>Generar documento PDF</button>}
           <button onClick={onBack}>Volver a pacientes</button>
         </>
@@ -1627,53 +1678,88 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
 
       <section className="summary">
         <div><span>Documento</span><strong>{formatPatientDocument(currentPatient)}</strong></div>
-        <div><span>Fecha nacimiento</span><strong>{formatBirthDate(currentPatient.birth_date)}</strong></div>
+        <div><span>Edad</span><strong>{patientAge(currentPatient.birth_date)}</strong></div>
         <div><span>Telefono</span><strong>{currentPatient.phone || "-"}</strong></div>
         <div><span>Email</span><strong>{currentPatient.email || "-"}</strong></div>
         <div><span>Obra social</span><strong>{currentPatient.insurance_plans?.name || "-"}</strong></div>
         <div><span>Nro. afiliado</span><strong>{currentPatient.affiliate_number || "-"}</strong></div>
-        <div><span>Consultorios</span><strong>{patientConsultorios(currentPatient)}</strong></div>
       </section>
 
       {panel === "datos" && <PatientContactForm patient={currentPatient} onSaved={refresh} />}
-      {panel === "historia" && canAccessClinical(profile) && <ClinicalEvolutionForm patient={currentPatient} onSaved={refresh} />}
+      {panel === "historia" && canAccessClinical(profile) && !isDoctorRole(profile.role) && <p className="notice">Vista de lectura. Cada evolución conserva la autoría y firma del profesional que la registró.</p>}
       {panel === "historia" && profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas y no se muestran para secretaria.</p>}
       {panel === "adjuntos" && <AttachmentForm patient={currentPatient} onUploaded={refresh} />}
       {panel === "nota" && <AdministrativeNoteForm patient={currentPatient} onSaved={refresh} />}
       {panel === "enviar" && <DocumentShareForm patient={currentPatient} profile={profile} />}
 
-      <ContactActions patient={currentPatient} profile={profile} />
+      {panel === "enviar" && <ContactActions patient={currentPatient} profile={profile} />}
 
-      <h2>Adjuntos</h2>
-      <AttachmentList attachments={currentPatient.attachments || []} />
-      <section className="clinical-history-section">
+      {panel === "adjuntos" && <section className="patient-panel-section"><h2>Estudios y documentos adjuntos</h2><AttachmentList attachments={currentPatient.attachments || []} /></section>}
+      {panel === "historia" && canAccessClinical(profile) && <section className="clinical-history-section">
         <header>
-          <div><span>Historia clínica</span><h2>Evoluciones</h2><p>{clinicalHistory.length} registros · más reciente primero</p></div>
-          {canAccessClinical(profile) && <button className="secondary-action" onClick={() => void printClinicalHistory(currentPatient, profile)}>Descargar PDF</button>}
+          <div><span>Historia clínica</span><h2>Línea de tiempo</h2><p>{visibleClinicalHistory.length} {visibleClinicalHistory.length === 1 ? "registro" : "registros"} · más reciente primero</p></div>
+          <div className="clinical-history-actions">
+            {isDoctorRole(profile.role) && !profile.simulated && <button className="primary" onClick={() => setShowEvolutionForm(value => !value)}>{showEvolutionForm ? "Cerrar carga" : "+ Nueva atención"}</button>}
+            {canAccessClinical(profile) && <button className="secondary-action" onClick={() => void printClinicalHistory(printablePatient, profile)}>Imprimir historia</button>}
+          </div>
         </header>
+        {showEvolutionForm && isDoctorRole(profile.role) && !profile.simulated && <ClinicalEvolutionForm patient={currentPatient} onSaved={async () => { await refresh(); setShowEvolutionForm(false); }} />}
+        {historyProfessionals.length > 1 && <div className="history-professional-filter" aria-label="Filtrar historia por profesional">
+          <button type="button" className={historyProfessionalId === "all" ? "active" : ""} onClick={() => setHistoryProfessionalId("all")}>Todos los profesionales</button>
+          {historyProfessionals.map(([id, author]) => <button type="button" key={id} className={historyProfessionalId === id ? "active" : ""} onClick={() => setHistoryProfessionalId(id)}>{author.full_name}</button>)}
+        </div>}
+        <div className="history-order-control"><span>Cronología</span><button type="button" className={historyOrder === "desc" ? "active" : ""} onClick={() => setHistoryOrder("desc")}>Más reciente</button><button type="button" className={historyOrder === "asc" ? "active" : ""} onClick={() => setHistoryOrder("asc")}>Desde el inicio</button></div>
         {profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas por RLS y no se muestran para secretaria.</p>}
         {canAccessClinical(profile) && !clinicalHistory.length && <p className="empty-day">Todavía no hay evoluciones clínicas registradas.</p>}
-        {canAccessClinical(profile) && <div className="clinical-timeline">{clinicalHistory.map(e => (
-          <article className="clinical-entry" key={e.id}>
-            <time dateTime={e.occurred_at}><strong>{new Date(e.occurred_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong><span>{new Date(e.occurred_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></time>
-            <div className="clinical-entry-content">
-              <h3>{e.reason || "Consulta / evolución"}</h3>
-              {e.diagnosis && <section><span>Diagnóstico</span><p>{e.diagnosis}</p></section>}
-              {e.notes && <section><span>Evolución</span><p>{e.notes}</p></section>}
-              {e.indications && <section className="clinical-indications"><span>Indicaciones</span><p>{e.indications}</p></section>}
-              {e.next_visit_at && <footer><b>Próximo control:</b> {new Date(`${e.next_visit_at}T12:00:00`).toLocaleDateString("es-AR")}</footer>}
-            </div>
-          </article>
-        ))}</div>}
-      </section>
-      {(currentPatient.administrative_notes || []).map(n => <article className="timeline" key={n.id}><strong>Nota administrativa</strong><p>{n.text}</p></article>)}
-      {(currentPatient.communications || []).map(c => <article className="timeline communication-timeline" key={c.id}><strong>{c.channel} · {(c.status||"ENVIADO_MANUAL").replace(/_/g," ")}</strong><small>{new Date(c.created_at||c.sent_at).toLocaleString("es-AR")}</small><p>{c.body}</p>{c.observation&&<p><b>Observacion:</b> {c.observation}</p>}</article>)}
+        {canAccessClinical(profile) && <div className="clinical-timeline">{clinicalTimelineItems.map(item => <PatientTimelineEntry key={item.id} item={item} />)}</div>}
+      </section>}
+      {panel === "nota" && <section className="patient-panel-section"><h2>Notas administrativas</h2>{(currentPatient.administrative_notes || []).map(n => <article className="timeline" key={n.id}><strong>Nota administrativa</strong><p>{n.text}</p></article>)}</section>}
+      {panel === "enviar" && <section className="patient-panel-section"><h2>Comunicaciones</h2>{(currentPatient.communications || []).map(c => <article className="timeline communication-timeline" key={c.id}><strong>{c.channel} · {(c.status||"ENVIADO_MANUAL").replace(/_/g," ")}</strong><small>{new Date(c.created_at||c.sent_at).toLocaleString("es-AR")}</small><p>{c.body}</p>{c.observation&&<p><b>Observacion:</b> {c.observation}</p>}</article>)}</section>}
     </Page>
   );
 }
 
 function printClinicalHistory(patient: Patient, profile: Profile) {
-  void downloadInstitutionalPdf({ patient, profile, kind: "HISTORY" });
+  void printInstitutionalPdf({ patient, profile, kind: "HISTORY" });
+}
+
+type PatientTimelineItem =
+  | { id: string; date: string; kind: "evolution"; evolution: ClinicalEvolution }
+  | { id: string; date: string; kind: "study"; study: Study }
+  | { id: string; date: string; kind: "attachment"; attachment: Attachment }
+  | { id: string; date: string; kind: "appointment"; appointment: Appointment };
+
+function PatientTimelineEntry({ item }: { item: PatientTimelineItem }) {
+  const date = new Date(item.date);
+  if (item.kind === "evolution") {
+    const evolution = item.evolution;
+    return <article className="clinical-entry timeline-evolution">
+      <time dateTime={item.date}><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong><span>{date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></time>
+      <div className="clinical-entry-content"><span className="timeline-kind">Atención clínica</span><h3>{evolution.reason || "Consulta / evolución"}</h3>
+        {evolution.author && <p className="clinical-entry-author"><b>{evolution.author.full_name}</b>{evolution.author.specialty || evolution.author.public_booking_specialty ? ` · ${evolution.author.specialty || evolution.author.public_booking_specialty}` : ""}{evolution.author.professional_license ? ` · M.P. ${evolution.author.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : ""}</p>}
+        {evolution.diagnosis && <section><span>Diagnóstico</span><p>{evolution.diagnosis}</p></section>}
+        {evolution.notes && <section><span>Evolución</span><p>{evolution.notes}</p></section>}
+        {evolution.indications && <section className="clinical-indications"><span>Indicaciones</span><p>{evolution.indications}</p></section>}
+        {evolution.requested_studies && <section className="clinical-requested-studies"><span>Estudios solicitados</span><p>{evolution.requested_studies}</p></section>}
+        {evolution.next_visit_at && <footer><b>Próximo control:</b> {new Date(`${evolution.next_visit_at}T12:00:00`).toLocaleDateString("es-AR")}</footer>}
+      </div>
+    </article>;
+  }
+  if (item.kind === "attachment") return <article className="clinical-entry timeline-document"><time dateTime={item.date}><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong><span>{date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></time><div className="clinical-entry-content"><span className="timeline-kind">Documento adjunto</span><h3>{item.attachment.file_name}</h3><p>{item.attachment.description || attachmentLabel(item.attachment)}</p></div></article>;
+  if (item.kind === "study") return <article className="clinical-entry timeline-study"><time dateTime={item.date}><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong></time><div className="clinical-entry-content"><span className="timeline-kind">Estudio</span><h3>{item.study.type.replace(/_/g, " ")}</h3>{item.study.indication && <p><b>Indicación:</b> {item.study.indication}</p>}{item.study.conclusion && <p><b>Conclusión:</b> {item.study.conclusion}</p>}</div></article>;
+  return <article className="clinical-entry timeline-appointment"><time dateTime={item.date}><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong><span>{date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></time><div className="clinical-entry-content"><span className="timeline-kind">Turno / atención</span><h3>{visibleAppointmentReason(item.appointment.reason) || appointmentTypeLabel(appointmentTypeValue(item.appointment))}</h3><p>{item.appointment.locations?.name || "Centro no informado"}</p></div></article>;
+}
+
+function patientAge(birthDate?: string | null) {
+  if (!birthDate) return "-";
+  const birth = new Date(`${birthDate}T12:00:00`);
+  if (Number.isNaN(birth.getTime())) return "-";
+  const [year, month, day] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date()).split("-").map(Number);
+  let age = year - birth.getFullYear();
+  if (month - 1 < birth.getMonth() || (month - 1 === birth.getMonth() && day < birth.getDate())) age--;
+  return age >= 0 ? `${age} años` : "-";
 }
 
 function buildClinicalHistoryHtml(patient: Patient, profile: Profile) {
@@ -1975,7 +2061,7 @@ function DocumentShareForm({ patient, profile }: { patient: Patient; profile: Pr
       {error && <p className="error">{error}</p>}
       {prepared && <p className="notice ok-notice">Correo preparado. Revisa el destinatario y adjunta el PDF de historia si corresponde.</p>}
       <div className="form-actions">
-        {includeHistory && <button type="button" className="secondary-action" onClick={() => printClinicalHistory(patient, profile)}>Descargar historia PDF</button>}
+        {includeHistory && <button type="button" className="secondary-action" onClick={() => printClinicalHistory(patient, profile)}>Imprimir historia</button>}
         <button type="button" className="primary" disabled={loading} onClick={openEmail}>{loading ? "Preparando..." : "Abrir email"}</button>
       </div>
     </section>
@@ -2004,6 +2090,7 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
     diagnosis: "",
     notes: "",
     indications: "",
+    requested_studies: "",
     next_visit_at: ""
   });
   const [error, setError] = useState("");
@@ -2013,7 +2100,7 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
     setError("");
     try {
       await createClinicalEvolution({ ...form, patient_id: patient.id });
-      setForm({ occurred_at: toBuenosAiresDatetimeLocal(), reason: "", diagnosis: "", notes: "", indications: "", next_visit_at: "" });
+      setForm({ occurred_at: toBuenosAiresDatetimeLocal(), reason: "", diagnosis: "", notes: "", indications: "", requested_studies: "", next_visit_at: "" });
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar la evolucion.");
@@ -2022,12 +2109,13 @@ function ClinicalEvolutionForm({ patient, onSaved }: { patient: Patient; onSaved
 
   return (
     <form className="panel form-card" onSubmit={submit}>
-      <h2>Nueva historia clinica / evolucion</h2>
+      <h2>Nueva atención clínica</h2>
       <div className="form-grid">
         <label>Fecha y hora<input type="datetime-local" value={form.occurred_at} onChange={e => setForm({ ...form, occurred_at: e.target.value })} /></label>
         <label>Motivo de visita <small>(opcional)</small><input value={form.reason} placeholder="Ej.: Control, consulta, seguimiento" onChange={e => setForm({ ...form, reason: e.target.value })} /></label>
         <label>Diagnostico<textarea value={form.diagnosis} onChange={e => setForm({ ...form, diagnosis: e.target.value })} /></label>
         <label>Indicaciones<textarea value={form.indications} onChange={e => setForm({ ...form, indications: e.target.value })} /></label>
+        <label>Estudios solicitados <small>(opcional)</small><textarea value={form.requested_studies} placeholder="Ej.: laboratorio, ecocardiograma, Holter" onChange={e => setForm({ ...form, requested_studies: e.target.value })} /></label>
         <label className="full-field">Evolucion / nota medica<textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
         <label>Proximo control orientativo<input type="date" value={form.next_visit_at} onChange={e => setForm({ ...form, next_visit_at: e.target.value })} /></label>
       </div>
@@ -2282,14 +2370,16 @@ function Tasks() {
 
 function Settings({ profile }: { profile: Profile }) {
   const [data, setData] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[]; availability: MedicalAvailability[]; holidays: Holiday[] } | null>(null);
-  type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos";
+  const [professionals, setProfessionals] = useState<Profile[]>([]);
+  type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
   const modules: Array<{ id: SettingsModule; label: string; hint: string }> = [
     ...(isOrganizationAdmin ? [
       { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes" },
       { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas" },
       { id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion" },
-      { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes" }
+      { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes" },
+      { id: "auditoria" as const, label: "Auditoria", hint: "Ingresos y actividad" }
     ] : []),
     { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables" },
     { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles" },
@@ -2298,8 +2388,12 @@ function Settings({ profile }: { profile: Profile }) {
   const [module, setModule] = useState<SettingsModule>(isOrganizationAdmin ? "organizacion" : "agenda");
 
   async function refresh() {
-    const config = await getConfiguration();
+    const [config, profileItems] = await Promise.all([
+      getConfiguration(),
+      isOrganizationAdmin ? listProfiles().catch(() => []) : Promise.resolve([profile])
+    ]);
     setData({ insurancePlans: config.insurancePlans, locations: config.locations, availability: config.availability, holidays: config.holidays });
+    setProfessionals(profileItems.filter(item => item.active && ["MEDICO", "MEDICA_ADMIN"].includes(item.role)));
   }
 
   useEffect(() => { refresh(); }, []);
@@ -2317,8 +2411,9 @@ function Settings({ profile }: { profile: Profile }) {
             {module === "consultorios" && <LocationManager locations={data.locations} canEdit={isOrganizationAdmin} onSaved={refresh} />}
             {module === "comunicaciones" && isOrganizationAdmin && <CommunicationTemplateManager />}
             {module === "coberturas" && <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />}
-            {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
+            {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} professionals={professionals} currentProfile={profile} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
             {module === "documentos" && canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
+            {module === "auditoria" && isOrganizationAdmin && <AuditLogManager />}
           </div>
         </div>
       )}
@@ -2343,6 +2438,43 @@ function Users({ profile }: { profile: Profile }) {
       {config && <UserManager users={users} locations={config.locations} organizations={config.organizations} currentOrganizationId={profile.organization_id} canManageAdministrators={profile.is_master} onSaved={refresh} />}
     </Page>
   );
+}
+
+function AuditLogManager() {
+  const today = toDateInputValue(new Date());
+  const [filters, setFilters] = useState({ action: "", entity: "", from: "", to: today });
+  const [items, setItems] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function refresh(next = filters) {
+    setLoading(true);
+    setError("");
+    try { setItems(await listAuditLogs(next)); }
+    catch (err) { setError(err instanceof Error ? err.message : "No se pudo consultar la auditoria."); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { void refresh(); }, []);
+  return <section className="panel admin-section wide audit-panel">
+    <div className="section-title"><div><h2>Auditoria</h2><p>Ingresos y operaciones relevantes de la organizacion. No muestra contraseñas ni contenido clinico.</p></div></div>
+    <form className="audit-filters" onSubmit={event => { event.preventDefault(); void refresh(); }}>
+      <label>Accion<input value={filters.action} onChange={event => setFilters({ ...filters, action: event.target.value })} placeholder="LOGIN, USER, PATIENT..." /></label>
+      <label>Entidad<select value={filters.entity} onChange={event => setFilters({ ...filters, entity: event.target.value })}><option value="">Todas</option><option value="profiles">Usuarios</option><option value="patients">Pacientes</option><option value="appointments">Turnos</option><option value="clinical_evolutions">Evoluciones</option><option value="attachments">Adjuntos</option></select></label>
+      <label>Desde<input type="date" value={filters.from} onChange={event => setFilters({ ...filters, from: event.target.value })} /></label>
+      <label>Hasta<input type="date" value={filters.to} onChange={event => setFilters({ ...filters, to: event.target.value })} /></label>
+      <button className="primary">Aplicar filtros</button>
+    </form>
+    {error && <p className="error">{error}</p>}
+    {loading ? <p className="empty-day">Cargando actividad...</p> : <div className="audit-list">
+      {items.map(item => <article key={item.id}><time>{new Date(item.created_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</time><strong>{auditActionLabel(item.action)}</strong><span>{item.actor?.full_name || "Sistema / acceso publico"}{item.actor?.role ? ` · ${item.actor.role.replace(/_/g, " ")}` : ""}</span><small>{item.entity}{item.entity_id ? ` · ${item.entity_id.slice(0, 8)}` : ""}</small></article>)}
+      {!items.length && <p className="empty-day">No hay actividad para los filtros elegidos.</p>}
+    </div>}
+  </section>;
+}
+
+function auditActionLabel(action: string) {
+  return action.replace(/_/g, " ").toLocaleLowerCase("es").replace(/^./, value => value.toUpperCase());
 }
 
 function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
@@ -2570,10 +2702,13 @@ function InsuranceRow({ plan, canEdit, editing, onEdit, onClose, onSaved }: {
   );
 }
 
-function AvailabilityManager({ locations, availability, canEdit, onSaved }: { locations: Location[]; availability: MedicalAvailability[]; canEdit: boolean; onSaved: () => Promise<void> }) {
+function AvailabilityManager({ locations, availability, professionals, currentProfile, canEdit, onSaved }: { locations: Location[]; availability: MedicalAvailability[]; professionals: Profile[]; currentProfile: Profile; canEdit: boolean; onSaved: () => Promise<void> }) {
   const activeLocations = locations.filter(location => location.active);
+  const selectableProfessionals = professionals.length ? professionals : [currentProfile].filter(item => ["MEDICO", "MEDICA_ADMIN"].includes(item.role));
+  const [selectedDoctorId, setSelectedDoctorId] = useState(selectableProfessionals.find(item => item.id === currentProfile.id)?.id || selectableProfessionals[0]?.id || "");
   const [form, setForm] = useState<MedicalAvailabilityInput>({
     location_id: activeLocations[0]?.id || "",
+    doctor_id: selectableProfessionals.find(item => item.id === currentProfile.id)?.id || selectableProfessionals[0]?.id || "",
     weekday: 1,
     start_time: "09:00",
     end_time: "13:00",
@@ -2581,10 +2716,16 @@ function AvailabilityManager({ locations, availability, canEdit, onSaved }: { lo
     enabled: true
   });
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (selectedDoctorId || !selectableProfessionals[0]) return;
+    setSelectedDoctorId(selectableProfessionals[0].id);
+    setForm(current => ({ ...current, doctor_id: selectableProfessionals[0].id }));
+  }, [selectedDoctorId, selectableProfessionals]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.location_id) return setError("Elegir consultorio.");
+    if (!form.doctor_id) return setError("Elegir profesional.");
     if (timeToMinutes(form.start_time) >= timeToMinutes(form.end_time)) return setError("El horario desde debe ser menor al horario hasta.");
     setError("");
     await createAvailability(form);
@@ -2593,8 +2734,14 @@ function AvailabilityManager({ locations, availability, canEdit, onSaved }: { lo
 
   return (
     <section className="panel admin-section wide">
-      <h2>Disponibilidad medica</h2>
-      <p className="notice">La agenda usa estos dias, horarios e intervalo para armar los turnos automaticamente.</p>
+      <div className="availability-heading">
+        <div><h2>Agenda por profesional</h2><p>Definí dónde y cuándo atiende cada profesional. El consultorio se asigna automáticamente al dar el turno.</p></div>
+        <label>Profesional
+          <select value={selectedDoctorId} onChange={event => { const doctorId = event.target.value; setSelectedDoctorId(doctorId); setForm(current => ({ ...current, doctor_id: doctorId })); }}>
+            {selectableProfessionals.map(item => <option key={item.id} value={item.id}>{professionalOptionLabel(item)}</option>)}
+          </select>
+        </label>
+      </div>
       {canEdit && (
         <form className="availability-form" onSubmit={submit}>
           <label>Consultorio
@@ -2620,15 +2767,17 @@ function AvailabilityManager({ locations, availability, canEdit, onSaved }: { lo
         </form>
       )}
       <div className="list compact-list">
-        {availability.map(item => <AvailabilityRow key={item.id} item={item} locations={activeLocations} canEdit={canEdit} onSaved={onSaved} />)}
+        {availability.filter(item => !selectedDoctorId || item.doctor_id === selectedDoctorId).map(item => <AvailabilityRow key={item.id} item={item} locations={activeLocations} professionals={selectableProfessionals} canEdit={canEdit} onSaved={onSaved} />)}
+        {!availability.some(item => !selectedDoctorId || item.doctor_id === selectedDoctorId) && <p className="empty-day">Este profesional todavía no tiene horarios configurados.</p>}
       </div>
     </section>
   );
 }
 
-function AvailabilityRow({ item, locations, canEdit, onSaved }: { item: MedicalAvailability; locations: Location[]; canEdit: boolean; onSaved: () => Promise<void> }) {
+function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: { item: MedicalAvailability; locations: Location[]; professionals: Profile[]; canEdit: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<MedicalAvailabilityInput>({
     location_id: item.location_id,
+    doctor_id: item.doctor_id,
     weekday: item.weekday,
     start_time: item.start_time,
     end_time: item.end_time,
@@ -2638,6 +2787,9 @@ function AvailabilityRow({ item, locations, canEdit, onSaved }: { item: MedicalA
 
   return (
     <div className="editable-row availability-row">
+      <select value={form.doctor_id || ""} onChange={e => setForm({ ...form, doctor_id: e.target.value })} disabled={!canEdit}>
+        {professionals.map(professional => <option key={professional.id} value={professional.id}>{professionalOptionLabel(professional)}</option>)}
+      </select>
       <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={!canEdit}>
         {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
       </select>
@@ -2658,6 +2810,11 @@ function AvailabilityRow({ item, locations, canEdit, onSaved }: { item: MedicalA
       )}
     </div>
   );
+}
+
+function professionalOptionLabel(profile: Pick<Profile, "full_name" | "specialty" | "professional_license">) {
+  const details = [profile.specialty, profile.professional_license ? `M.P. ${profile.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : ""].filter(Boolean);
+  return `${profile.full_name}${details.length ? ` · ${details.join(" · ")}` : ""}`;
 }
 
 function HolidayManager({ holidays, canEdit, onSaved }: { holidays: Holiday[]; canEdit: boolean; onSaved: () => Promise<void> }) {

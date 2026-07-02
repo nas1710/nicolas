@@ -29,7 +29,12 @@ Ejecutar en SQL Editor con rol `postgres`:
 12. `supabase/11_commercial_branding.sql`
 13. `supabase/12_commercial_onboarding.sql`
 14. `supabase/13_tenant_isolation.sql`
-15. Desplegar las Edge Functions
+15. `supabase/14_commercial_billing.sql`
+16. `supabase/15_google_drive_attachments.sql`
+17. `supabase/16_public_booking_search.sql`
+18. `supabase/17_patient_identity_and_professional_histories.sql`
+19. `supabase/18_clinical_timeline.sql`
+20. Desplegar las Edge Functions
 
 Despues crear la primera cuenta en Supabase Auth y asignar su perfil de forma administrativa. No hay credenciales fijas en los seeds.
 
@@ -52,7 +57,11 @@ Para la base publicada de Cardio Ayala:
 13. `supabase/12_commercial_onboarding.sql`
 14. `supabase/13_tenant_isolation.sql`
 15. `supabase/14_commercial_billing.sql`
-16. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
+16. `supabase/15_google_drive_attachments.sql`
+17. `supabase/16_public_booking_search.sql`
+18. `supabase/17_patient_identity_and_professional_histories.sql`
+19. `supabase/18_clinical_timeline.sql`
+20. Desplegar nuevamente las Edge Functions cuando cambie su codigo.
 
 El consolidador puede ejecutarse varias veces. No elimina tablas, pacientes, turnos, historias, documentos, consultorios ni usuarios.
 
@@ -86,8 +95,9 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 
 ### Relaciones criticas
 
-- Paciente unico por `(document_type, document)`.
+- Paciente unico por `(organization_id, document_type, document)`; sus datos formales se reutilizan entre profesionales de la organizacion.
 - `patient_locations` es la unica relacion vigente paciente-consultorio.
+- Cada evolucion pertenece a su autor mediante `clinical_evolutions.created_by`; el paciente puede tener historias diferenciadas por profesional sin duplicar su identidad.
 - Turnos pertenecen a paciente, profesional y consultorio; sus practicas dinamicas se registran en `appointment_practices`.
 - Disponibilidades pertenecen a profesional y consultorio.
 - `patients.location_id` permanece solo como dato legado, sin FK.

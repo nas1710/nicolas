@@ -180,11 +180,12 @@ Importante:
 ## PDF institucional
 
 Desde la ficha clinica, los usuarios internos con acceso clinico pueden usar
-**Generar documento PDF** para descargar bajo demanda historia clinica,
+**Generar documento PDF** para preparar historia clinica,
 informe medico, constancia de atencion, resumen o indicaciones.
 
-El archivo A4 se genera localmente en el navegador y no se guarda
-automaticamente en Supabase. Toma los datos disponibles del paciente,
+El documento A4 se genera localmente y abre el dialogo de impresion del
+navegador. Desde alli el usuario decide si imprime o guarda como PDF; la app
+no fuerza una descarga ni lo guarda automaticamente en Supabase. Toma los datos disponibles del paciente,
 profesional, especialidad, matricula, practica y consultorio. Los campos
 profesionales opcionales se agregan con
 `supabase/04_institutional_pdf_profiles.sql`.

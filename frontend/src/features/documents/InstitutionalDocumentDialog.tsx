@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createSignedSignatureUrl, getOrganizationSettings, organizationLogoUrl, type Appointment, type ClinicalEvolution, type OrganizationSettings, type Patient, type Profile } from "../../api/supabase";
-import { documentKindLabels, downloadInstitutionalPdf, InstitutionalDocumentKind, institutionalPdfFileName } from "./institutionalPdf";
+import { documentKindLabels, InstitutionalDocumentKind, printInstitutionalPdf } from "./institutionalPdf";
 
 export function InstitutionalDocumentDialog({ patient, profile, onClose }: { patient: Patient; profile: Profile; onClose: () => void }) {
   const [kind, setKind] = useState<InstitutionalDocumentKind>("HISTORY");
@@ -34,8 +34,8 @@ export function InstitutionalDocumentDialog({ patient, profile, onClose }: { pat
           </article>
         </div>
         <div className="document-generator-actions">
-          <span>Archivo: {institutionalPdfFileName(patient, kind)}</span>
-          <button type="button" className="primary" onClick={() => void downloadInstitutionalPdf({ patient, profile, kind, organization })}>Descargar PDF</button>
+          <span>Se abrirá el diálogo de impresión. Allí podés imprimir o guardar como PDF.</span>
+          <button type="button" className="primary" onClick={() => void printInstitutionalPdf({ patient, profile, kind, organization })}>Imprimir / guardar PDF</button>
         </div>
       </div>
     </div>

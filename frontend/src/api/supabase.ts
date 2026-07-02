@@ -75,6 +75,8 @@ export type Profile = {
   organization_id?: string | null;
   organization?: { id:string; commercial_name:string; commercial_status:string; active:boolean } | null;
   location?: Location | null;
+  simulated?: boolean;
+  simulated_professional_id?: string | null;
 };
 
 export type InsurancePlan = {
@@ -93,6 +95,7 @@ export type MedicalAvailability = {
   location_id: string;
   doctor_id: string | null;
   locations?: Location | null;
+  doctor?: Pick<Profile, "id" | "full_name" | "specialty" | "professional_license"> | null;
 };
 
 export type PublicBookingDoctor = {
@@ -108,7 +111,7 @@ export type PublicLocation = { id: string; name: string; address: string | null 
 export type PublicCommercialCatalog = { specialties: PublicSpecialty[]; practices: PublicPractice[]; professionals: PublicProfessional[]; locations: PublicLocation[] };
 export type CommercialSpecialty = PublicSpecialty & { active: boolean; published: boolean };
 export type CommercialPractice = PublicPractice & { active: boolean; published: boolean };
-export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[] };
+export type CommercialProfessional = { id: string; full_name: string; public_booking_enabled: boolean; specialty_ids: string[]; practice_ids: string[]; specialty?: string | null; professional_license?: string | null };
 export type CommercialAdminCatalog = { specialties: CommercialSpecialty[]; practices: CommercialPractice[]; professionals: CommercialProfessional[] };
 export type OrganizationSettings = {
   id: string; slug?: string | null; commercial_name: string; legal_name?: string | null; tax_id?: string | null; description?: string | null;
@@ -141,6 +144,12 @@ export type PublicBookingSlot = {
   location_id: string;
   location_name: string;
   location_address: string | null;
+};
+
+export type PublicBookingSearchSlot = PublicBookingSlot & {
+  doctor_id: string;
+  doctor_name: string;
+  specialty_name: string;
 };
 
 export type PublicBookingDate = {
@@ -269,7 +278,10 @@ export type ClinicalEvolution = {
   diagnosis: string | null;
   notes: string | null;
   indications: string | null;
+  requested_studies?: string | null;
   next_visit_at: string | null;
+  created_by?: string;
+  author?: Pick<Profile, "id" | "full_name" | "specialty" | "public_booking_specialty" | "professional_license" | "signature_name" | "signature_path" | "institution_name" | "institutional_footer"> | null;
 };
 
 export type Communication = {
@@ -287,6 +299,16 @@ export type Communication = {
 };
 export type CommunicationTemplate = { id:string;name:string;kind:string;channel:"WHATSAPP"|"EMAIL"|"PHONE";subject:string;body:string;active:boolean };
 export type CommunicationAlert = { kind:string;appointment_id:string|null;patient_id:string;title:string;due_at:string|null;detail:string };
+export type AuditLog = {
+  id: string;
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  user_id: string | null;
+  created_at: string;
+  after: Record<string, unknown> | null;
+  actor?: { full_name: string; role: Role } | null;
+};
 
 export type Attachment = {
   id: string;
@@ -335,6 +357,7 @@ export type ClinicalEvolutionInput = {
   diagnosis?: string;
   notes?: string;
   indications?: string;
+  requested_studies?: string;
   next_visit_at?: string;
 };
 
@@ -350,6 +373,7 @@ export type AppointmentInput = {
   reason?: string;
   patient_id: string;
   location_id: string;
+  doctor_id?: string | null;
 };
 
 export type AppointmentUpdateInput = Partial<AppointmentInput> & {
@@ -374,6 +398,7 @@ export type MedicalAvailabilityInput = {
   end_time: string;
   slot_interval_min: number;
   location_id: string;
+  doctor_id?: string | null;
 };
 
 export type ProfileInput = {
@@ -500,29 +525,23 @@ export async function signIn(identifier: string, password: string, remember = tr
 
   setRememberSessionPreference(remember);
 
-  if (cleanIdentifier.includes("@")) {
-    const { error } = await supabase.auth.signInWithPassword({ email: cleanIdentifier, password });
-    if (error) throw new Error(authErrorMessage(error));
-  } else {
-    const documentNumber = cleanIdentifier.replace(/\D/g, "");
-    if (documentNumber.length < 6) throw new Error("Ingresá un DNI válido o tu email completo.");
-    const { data, error } = await supabase.functions.invoke("login-with-identifier", {
-      body: { identifier: documentNumber, password }
-    });
-    if (error || data?.error || !data?.access_token || !data?.refresh_token) {
-      throw new Error(data?.error || "Usuario o contraseña incorrectos.");
-    }
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token
-    });
-    if (sessionError) throw new Error("No se pudo iniciar la sesión.");
+  const normalizedIdentifier = cleanIdentifier.includes("@") ? cleanIdentifier : cleanIdentifier.replace(/\D/g, "");
+  if (!cleanIdentifier.includes("@") && normalizedIdentifier.length < 6) throw new Error("Ingresá un DNI válido o tu email completo.");
+  const { data, error } = await supabase.functions.invoke("login-with-identifier", {
+    body: { identifier: normalizedIdentifier, password }
+  });
+  if (error || data?.error || !data?.access_token || !data?.refresh_token) {
+    throw new Error(data?.error || "Usuario o contraseña incorrectos.");
   }
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token
+  });
+  if (sessionError) throw new Error("No se pudo iniciar la sesión.");
 
   try {
     const profile = await getCurrentProfile();
     if (!profile) throw new Error("La cuenta ingreso correctamente, pero no tiene un perfil habilitado.");
-    await supabase.rpc("record_session_event", { p_action: "LOGIN" });
     return profile;
   } catch (error) {
     await supabase.auth.signOut();
@@ -668,7 +687,7 @@ export async function getPatient(id: string) {
       insurance_plans(*),
       patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)),
       administrative_notes(*),
-      clinical_evolutions(*),
+      clinical_evolutions(*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,public_booking_specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)),
       communications(*),
       attachments(*),
       appointments(*, locations(*)),
@@ -754,10 +773,11 @@ export async function createClinicalEvolution(input: ClinicalEvolutionInput) {
       diagnosis: input.diagnosis?.trim() || null,
       notes: input.notes?.trim() || null,
       indications: input.indications?.trim() || null,
+      requested_studies: input.requested_studies?.trim() || null,
       next_visit_at: toIsoDateTime(input.next_visit_at),
       created_by: sessionData.session?.user.id
     })
-    .select("*")
+    .select("*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,public_booking_specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)")
     .single();
 
   throwIfError(error);
@@ -1022,6 +1042,46 @@ export async function listPublicBookingDates(doctorId: string, from: string, to:
   return (data || []) as PublicBookingDate[];
 }
 
+export async function listAuditLogs(filters: { action?: string; entity?: string; from?: string; to?: string } = {}) {
+  let query = supabase
+    .from("audit_logs")
+    .select("id,action,entity,entity_id,user_id,created_at,after,actor:profiles!audit_logs_user_id_fkey(full_name,role)")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (filters.action) query = query.ilike("action", `%${filters.action}%`);
+  if (filters.entity) query = query.eq("entity", filters.entity);
+  if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00-03:00`);
+  if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59-03:00`);
+  const { data, error } = await query;
+  throwIfError(error);
+  return (data || []) as unknown as AuditLog[];
+}
+
+export async function searchPublicBookingSlots(input: {
+  organizationSlug?: string;
+  specialtyId: string;
+  practiceIds: string[];
+  from: string;
+  to: string;
+  doctorId?: string;
+  locationId?: string;
+}) {
+  const { data, error } = await supabase.rpc("public_search_booking_slots", {
+    p_organization_slug: input.organizationSlug || null,
+    p_specialty_id: input.specialtyId,
+    p_practice_ids: input.practiceIds,
+    p_from: input.from,
+    p_to: input.to,
+    p_doctor_id: input.doctorId || null,
+    p_location_id: input.locationId || null
+  });
+  if (error?.message?.includes("schema cache")) {
+    throw new Error("La búsqueda de turnos se está actualizando. Volvé a intentar en unos minutos.");
+  }
+  throwIfError(error);
+  return (data || []) as PublicBookingSearchSlot[];
+}
+
 export async function listPublicBookingInsurancePlans(organizationSlug?:string) {
   const { data, error } = organizationSlug
     ? await supabase.rpc("public_booking_insurance_plans_for_slug",{p_slug:organizationSlug})
@@ -1077,7 +1137,8 @@ export async function createAppointment(input: AppointmentInput) {
       type: normalizedType.type,
       reason: normalizedType.reason,
       patient_id: input.patient_id,
-      location_id: input.location_id
+      location_id: input.location_id,
+      doctor_id: input.doctor_id || null
     })
     .select("*, patients(*), locations(*)")
     .single();
@@ -1157,7 +1218,7 @@ export async function getConfiguration() {
   const [insurancePlans, locations, availability] = await Promise.all([
     supabase.from("insurance_plans").select("*").order("name"),
     supabase.from("locations").select("*").order("name"),
-    supabase.from("medical_availability").select("*, locations(*)").order("weekday")
+    supabase.from("medical_availability").select("*, locations(*), doctor:profiles!medical_availability_doctor_id_fkey(id,full_name,specialty,professional_license)").order("weekday")
   ]);
   const holidays = await supabase.from("holidays").select("*").order("date");
 
@@ -1232,7 +1293,7 @@ export async function createAvailability(input: MedicalAvailabilityInput) {
   const { data, error } = await supabase
     .from("medical_availability")
     .insert(input)
-    .select("*, locations(*)")
+    .select("*, locations(*), doctor:profiles!medical_availability_doctor_id_fkey(id,full_name,specialty,professional_license)")
     .single();
   throwIfError(error);
   return data as MedicalAvailability;
@@ -1243,7 +1304,7 @@ export async function updateAvailability(id: string, input: MedicalAvailabilityI
     .from("medical_availability")
     .update(input)
     .eq("id", id)
-    .select("*, locations(*)")
+    .select("*, locations(*), doctor:profiles!medical_availability_doctor_id_fkey(id,full_name,specialty,professional_license)")
     .single();
   throwIfError(error);
   return data as MedicalAvailability;

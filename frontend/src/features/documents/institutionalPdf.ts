@@ -1,4 +1,4 @@
-import type { Appointment, ClinicalEvolution, OrganizationSettings, Patient, Profile } from "../../api/supabase";
+import type { Appointment, Attachment, ClinicalEvolution, OrganizationSettings, Patient, Profile } from "../../api/supabase";
 import { createSignedSignatureUrl, organizationLogoUrl } from "../../api/supabase";
 
 export type InstitutionalDocumentKind = "HISTORY" | "MEDICAL_REPORT" | "ATTENDANCE_CERTIFICATE" | "APPOINTMENT_SUMMARY" | "INDICATIONS";
@@ -13,9 +13,20 @@ export const documentKindLabels: Record<InstitutionalDocumentKind, string> = {
 
 type PdfContext = { patient: Patient; profile: Profile; kind: InstitutionalDocumentKind; organization?: OrganizationSettings|null };
 
-export async function downloadInstitutionalPdf(context: PdfContext) {
-  const doc = await buildInstitutionalPdf(context);
-  doc.save(institutionalPdfFileName(context.patient, context.kind));
+export async function printInstitutionalPdf(context: PdfContext) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) throw new Error("El navegador bloqueó la ventana de impresión. Habilitá ventanas emergentes para este sitio.");
+  printWindow.document.write("<!doctype html><title>Preparando documento</title><p style='font-family:sans-serif;padding:24px'>Preparando documento para imprimir...</p>");
+  try {
+    const doc = await buildInstitutionalPdf(context);
+    const url = URL.createObjectURL(doc.output("blob"));
+    printWindow.location.replace(url);
+    window.setTimeout(() => { printWindow.focus(); printWindow.print(); }, 900);
+    window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (error) {
+    printWindow.close();
+    throw error;
+  }
 }
 
 export async function buildInstitutionalPdf({ patient, profile, kind, organization }: PdfContext) {
@@ -24,8 +35,10 @@ export async function buildInstitutionalPdf({ patient, profile, kind, organizati
   const evolutions = sortedEvolutions(patient);
   const latestEvolution = evolutions[evolutions.length - 1];
   const appointments = sortedAppointments(patient);
+  const attachments = [...(patient.attachments || [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   const latestAppointment = appointments[appointments.length - 1];
-  const signatureImage = profile.signature_path ? await loadSignatureImage(profile.signature_path).catch(() => null) : null;
+  const signingProfile = latestEvolution?.author ? { ...profile, ...latestEvolution.author } as Profile : profile;
+  const signatureImage = signingProfile.signature_path ? await loadSignatureImage(signingProfile.signature_path).catch(() => null) : null;
   const organizationLogo = organization?.logo_path ? await loadPublicImage(organizationLogoUrl(organization.logo_path)).catch(() => null) : null;
   let y = 0;
 
@@ -49,7 +62,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind, organizati
     doc.text(organization?.commercial_name || profile.institution_name || "Documento asistencial", 39, 13);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
-    doc.text(professionalLine(profile), 39, 19);
+    doc.text(professionalLine(signingProfile), 39, 19);
     y = 38;
   };
 
@@ -92,7 +105,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind, organizati
   doc.text(`Telefono: ${patient.phone || "No informado"}`, 108, patientY + 13);
   y += 34;
 
-  renderDocumentBody(kind, { patient, latestEvolution, latestAppointment, evolutions, section, line, reserve: ensure });
+  renderDocumentBody(kind, { patient, latestEvolution, latestAppointment, evolutions, appointments, attachments, section, line, reserve: ensure });
 
   ensure(36);
   y += 10;
@@ -106,10 +119,10 @@ export async function buildInstitutionalPdf({ patient, profile, kind, organizati
   doc.line(122, y, 190, y);
   y += 5;
   doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(31, 45, 51);
-  doc.text(profile.signature_name || profile.full_name, 156, y, { align: "center" });
+  doc.text(signingProfile.signature_name || signingProfile.full_name, 156, y, { align: "center" });
   doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  doc.text(profile.specialty || profile.public_booking_specialty || "Profesional de la salud", 156, y + 5, { align: "center" });
-  doc.text(profile.professional_license ? `M.P. ${profile.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : "Matricula no informada", 156, y + 10, { align: "center" });
+  doc.text(signingProfile.specialty || signingProfile.public_booking_specialty || "Profesional de la salud", 156, y + 5, { align: "center" });
+  doc.text(signingProfile.professional_license ? `M.P. ${signingProfile.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : "Matricula no informada", 156, y + 10, { align: "center" });
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
@@ -120,7 +133,7 @@ export async function buildInstitutionalPdf({ patient, profile, kind, organizati
     doc.text(organization?.legal_text || profile.institutional_footer || "Documento confidencial generado por el sistema de gestion asistencial.", 16, 291);
     doc.text(`Pagina ${page} de ${pages}`, 194, 291, { align: "right" });
   }
-  doc.setProperties({ title: `${documentKindLabels[kind]} - ${patient.last_name}, ${patient.first_name}`, author: profile.full_name, subject: documentKindLabels[kind] });
+  doc.setProperties({ title: `${documentKindLabels[kind]} - ${patient.last_name}, ${patient.first_name}`, author: signingProfile.full_name, subject: documentKindLabels[kind] });
   return doc;
 }
 
@@ -129,11 +142,13 @@ function renderDocumentBody(kind: InstitutionalDocumentKind, ctx: {
   latestEvolution?: ClinicalEvolution;
   latestAppointment?: Appointment;
   evolutions: ClinicalEvolution[];
+  appointments: Appointment[];
+  attachments: Attachment[];
   section: (title: string) => void;
   reserve: (height: number) => void;
   line: (text: string, options?: { bold?: boolean; size?: number; color?: [number, number, number]; gap?: number }) => void;
 }) {
-  const { latestEvolution, latestAppointment, evolutions, section, line, reserve } = ctx;
+  const { latestEvolution, latestAppointment, evolutions, appointments, attachments, section, line, reserve } = ctx;
   if (kind === "ATTENDANCE_CERTIFICATE") {
     section("Constancia");
     line(`Se deja constancia que ${ctx.patient.first_name} ${ctx.patient.last_name} fue atendido/a el ${formatDate(latestAppointment?.starts_at || latestEvolution?.occurred_at || new Date().toISOString())}.`);
@@ -162,21 +177,47 @@ function renderDocumentBody(kind: InstitutionalDocumentKind, ctx: {
     if (latestEvolution?.indications) { section("Indicaciones"); line(latestEvolution.indications); }
     return;
   }
-  section("Evoluciones clinicas");
-  if (!evolutions.length) line("Sin evoluciones clinicas registradas.", { color: [91, 108, 116] });
-  evolutions.forEach(evolution => {
-    reserve(44);
-    line(`${formatDate(evolution.occurred_at)} - ${evolution.reason}`, { bold: true, color: [15, 92, 96], gap: 2 });
-    if (evolution.diagnosis) line(`Diagnostico: ${evolution.diagnosis}`);
-    if (evolution.notes) line(`Evolucion: ${evolution.notes}`);
-    if (evolution.indications) line(`Indicaciones: ${evolution.indications}`);
-    if (evolution.next_visit_at) line(`Proximo control: ${formatDate(evolution.next_visit_at)}`, { gap: 5 });
+  section("Linea de tiempo clinica");
+  const events = clinicalTimelineEvents(evolutions, appointments, attachments);
+  if (!events.length) line("Sin atenciones ni documentos registrados.", { color: [91, 108, 116] });
+  events.forEach(event => {
+    reserve(30);
+    line(`${formatDate(event.date)} - ${event.title}`, { bold: true, color: event.color, gap: 2 });
+    event.lines.forEach(value => line(value));
+    line("", { gap: 3 });
   });
 }
 
-export function institutionalPdfFileName(patient: Patient, kind: InstitutionalDocumentKind) {
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
-  return `${sanitize(`${patient.last_name}_${patient.first_name}`)}_${sanitize(documentKindLabels[kind])}_${date}.pdf`;
+function clinicalTimelineEvents(evolutions: ClinicalEvolution[], appointments: Appointment[], attachments: Attachment[]) {
+  const evolutionEvents = evolutions.map(evolution => ({
+    date: evolution.occurred_at,
+    title: evolution.reason || "Consulta / evolucion",
+    color: [15, 92, 96] as [number, number, number],
+    lines: [
+      evolution.author ? `Profesional: ${evolution.author.full_name}${evolution.author.specialty || evolution.author.public_booking_specialty ? ` - ${evolution.author.specialty || evolution.author.public_booking_specialty}` : ""}${evolution.author.professional_license ? ` - M.P. ${evolution.author.professional_license.replace(/^M\.?P\.?\s*/i, "")}` : ""}` : "",
+      evolution.diagnosis ? `Diagnostico: ${evolution.diagnosis}` : "",
+      evolution.notes ? `Evolucion: ${evolution.notes}` : "",
+      evolution.indications ? `Indicaciones: ${evolution.indications}` : "",
+      evolution.requested_studies ? `Estudios solicitados: ${evolution.requested_studies}` : "",
+      evolution.next_visit_at ? `Proximo control: ${formatDate(evolution.next_visit_at)}` : ""
+    ].filter(Boolean)
+  }));
+  const appointmentEvents = appointments
+    .filter(appointment => new Date(appointment.starts_at).getTime() <= Date.now())
+    .map(appointment => ({
+      date: appointment.starts_at,
+      title: cleanAppointmentReason(appointment) || "Atencion programada",
+      color: [82, 96, 103] as [number, number, number],
+      lines: [`Estado: ${appointment.status.replace(/_/g, " ")}`, appointment.locations?.name ? `Centro: ${appointment.locations.name}` : ""].filter(Boolean)
+    }));
+  const attachmentEvents = attachments.map(attachment => ({
+    date: attachment.created_at,
+    title: `Documento: ${attachment.file_name}`,
+    color: [114, 74, 170] as [number, number, number],
+    lines: [attachment.description || "", `Tipo: ${attachment.kind.replace(/_/g, " ")}`].filter(Boolean)
+  }));
+  return [...evolutionEvents, ...appointmentEvents, ...attachmentEvents]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
 function professionalLine(profile: Profile) {
@@ -189,8 +230,6 @@ function sortedAppointments(patient: Patient) { return [...(patient.appointments
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "No informada"; }
 function formatDateOnly(value?: string | null) { if (!value) return "No informada"; const [year, month, day] = value.slice(0, 10).split("-"); return `${day}/${month}/${year}`; }
 function cleanAppointmentReason(appointment?: Appointment) { return appointment?.reason?.replace(/\[\[MOTIVOS_TURNO:[^\]]+\]\]/g, "").trim() || appointment?.type?.replace(/_/g, " ") || ""; }
-function sanitize(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, ""); }
-
 async function loadSignatureImage(path: string) {
   const url = await createSignedSignatureUrl(path);
   const response = await fetch(url);
