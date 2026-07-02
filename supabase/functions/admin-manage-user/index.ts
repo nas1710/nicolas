@@ -219,6 +219,18 @@ Deno.serve(async request => {
       return json({ temporary_password: temporaryPassword }, corsHeaders);
     }
 
+    if (action === "confirm_email") {
+      const { error: confirmError } = await adminClient.auth.admin.updateUserById(target.id, {
+        email_confirm: true,
+        ban_duration: "none"
+      });
+      if (confirmError) throw confirmError;
+      const { error: profileError } = await adminClient.from("profiles").update({ active: true }).eq("id", target.id);
+      if (profileError) throw profileError;
+      await audit("USER_EMAIL_CONFIRMED", target.id, target, { ...target, active: true, email_confirmed: true });
+      return json({ enabled: true }, corsHeaders);
+    }
+
     if (action === "delete_user") {
       if (!requester.is_master) throw new Error("Solo el usuario Maestro puede eliminar accesos.");
       if (target.is_master) throw new Error("El usuario Maestro no puede eliminarse.");

@@ -1104,6 +1104,7 @@ function AppointmentForm({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [patientSearch, setPatientSearch] = useState("");
 
   useEffect(() => {
     listPatients().then(setPatients);
@@ -1116,6 +1117,13 @@ function AppointmentForm({
   const matchingAvailability = findAvailabilityForAppointment(form.starts_at, form.duration_min, availableSlots);
   const availabilityMessage = getAvailabilityMessage(form.starts_at, form.duration_min, availableSlots);
   const visualSlots = selectedLocationId ? buildLocationDaySlots(selectedDate, selectedLocationId, availableSlots, appointments) : [];
+  const activePatients = patients.filter(patient => patient.status !== "baja");
+  const normalizedPatientSearch = patientSearch.trim().toLocaleLowerCase("es");
+  const filteredPatients = normalizedPatientSearch
+    ? activePatients.filter(patient => `${patient.last_name} ${patient.first_name} ${patient.document || ""}`.toLocaleLowerCase("es").includes(normalizedPatientSearch))
+    : activePatients;
+  const selectedPatient = activePatients.find(patient => patient.id === form.patient_id);
+  const appointmentReady = Boolean(selectedLocationId && form.starts_at && (patientMode === "existente" ? form.patient_id : newPatient.first_name?.trim() && newPatient.last_name?.trim() && newPatient.document?.trim()));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1165,7 +1173,15 @@ function AppointmentForm({
 
   return (
     <form className="panel form-card" onSubmit={submit}>
-      <h2>Nuevo turno</h2>
+      <div className="appointment-form-heading">
+        <div><span>Nuevo turno</span><h2>Completa los datos en 3 pasos</h2></div>
+        <ol aria-label="Progreso del turno">
+          <li className={selectedLocationId ? "done" : "active"}>Agenda</li>
+          <li className={form.starts_at ? "done" : selectedLocationId ? "active" : ""}>Horario</li>
+          <li className={appointmentReady ? "done" : form.starts_at ? "active" : ""}>Paciente</li>
+        </ol>
+      </div>
+      <h3 className="appointment-step-title"><span>1</span> Agenda y motivo</h3>
       <div className="segmented">
         <button type="button" className={patientMode === "existente" ? "active" : ""} onClick={() => setPatientMode("existente")}>Paciente existente</button>
         <button type="button" className={patientMode === "nuevo" ? "active" : ""} onClick={() => setPatientMode("nuevo")}>Paciente nuevo</button>
@@ -1189,7 +1205,7 @@ function AppointmentForm({
 
       <div className="slot-picker">
         <div className="slot-picker-head">
-          <strong>Horarios</strong>
+          <strong><span className="step-number">2</span> Elegí un horario libre</strong>
           <span>{form.starts_at ? `Seleccionado ${new Date(form.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Click libre selecciona · doble click avanza · ocupado edita"}</span>
         </div>
         <div className="slot-picker-grid">
@@ -1214,13 +1230,20 @@ function AppointmentForm({
       <p className={availabilityMessage?.startsWith("Consultorio:") ? "notice ok-notice" : "notice"}>{availabilityMessage}</p>
 
       <div id="appointment-patient-section" className="appointment-patient-section">
+      <h3 className="appointment-step-title"><span>3</span> Paciente</h3>
       {patientMode === "existente" ? (
-        <label className="full-field">Paciente
+        <div className="patient-lookup">
+        <label className="full-field">Buscar por apellido, nombre o DNI
+          <input value={patientSearch} onChange={e => setPatientSearch(e.target.value)} placeholder="Empezá a escribir para acotar la lista" autoComplete="off" />
+        </label>
+        <label className="full-field">Seleccionar paciente
           <select value={form.patient_id} onChange={e => setForm({ ...form, patient_id: e.target.value })}>
             <option value="">Elegir paciente</option>
-            {patients.filter(patient => patient.status !== "baja").map(patient => <option key={patient.id} value={patient.id}>{patient.last_name}, {patient.first_name} - {formatPatientDocument(patient, "s/d")}</option>)}
+            {filteredPatients.map(patient => <option key={patient.id} value={patient.id}>{patient.last_name}, {patient.first_name} - {formatPatientDocument(patient, "s/d")}</option>)}
           </select>
         </label>
+        {selectedPatient && <div className="selected-patient-summary"><span>Paciente seleccionado</span><strong>{selectedPatient.last_name}, {selectedPatient.first_name}</strong><small>{formatPatientDocument(selectedPatient)}</small></div>}
+        </div>
       ) : (
         <div className="form-grid nested-form">
           <label>Nombre<input value={newPatient.first_name} onChange={e => setNewPatient({ ...newPatient, first_name: e.target.value })} onBlur={() => setNewPatient(current => ({ ...current, first_name: formatProperName(current.first_name) }))} /></label>
@@ -1244,9 +1267,15 @@ function AppointmentForm({
       </div>
 
       {error && <p className="error">{error}</p>}
+      <div className={`appointment-review ${appointmentReady ? "ready" : ""}`}>
+        <strong>{appointmentReady ? "Turno listo para guardar" : "Faltan datos para guardar"}</strong>
+        <span>{selectedLocation?.name || "Elegí una agenda"}</span>
+        <span>{form.starts_at ? new Date(form.starts_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "Elegí fecha y horario"}</span>
+        <span>{patientMode === "existente" ? selectedPatient ? `${selectedPatient.last_name}, ${selectedPatient.first_name}` : "Elegí un paciente" : newPatient.first_name && newPatient.last_name ? `${newPatient.last_name}, ${newPatient.first_name}` : "Completá el paciente nuevo"}</span>
+      </div>
       <div className="form-actions">
         {onCancel && <button type="button" className="secondary-action" onClick={onCancel}>Cerrar</button>}
-        <button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar turno"}</button>
+        <button className="primary" disabled={saving || !appointmentReady}>{saving ? "Guardando..." : "Confirmar y guardar turno"}</button>
       </div>
     </form>
   );
@@ -1556,6 +1585,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
   const [currentPatient, setCurrentPatient] = useState(patient);
   const [panel, setPanel] = useState<"historia" | "datos" | "adjuntos" | "nota" | "enviar">("historia");
   const [showDocumentGenerator, setShowDocumentGenerator] = useState(false);
+  const clinicalHistory = [...(currentPatient.clinical_evolutions || [])].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
 
   async function refresh() {
     setCurrentPatient(await getPatient(patient.id));
@@ -1577,6 +1607,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       subtitle="Ficha clinica del paciente"
       actions={
         <>
+          {canAccessClinical(profile) && <button className="primary" onClick={() => void printClinicalHistory(currentPatient, profile)}>Descargar historia PDF</button>}
           {canAccessClinical(profile) && <button className="secondary-action" onClick={() => setShowDocumentGenerator(true)}>Generar documento PDF</button>}
           <button onClick={onBack}>Volver a pacientes</button>
         </>
@@ -1615,17 +1646,26 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
 
       <h2>Adjuntos</h2>
       <AttachmentList attachments={currentPatient.attachments || []} />
-      <h2>Historial</h2>
-      {profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas por RLS y no se muestran para secretaria.</p>}
-      {canAccessClinical(profile) && (currentPatient.clinical_evolutions || []).map(e => (
-        <article className="timeline" key={e.id}>
-          <strong>{new Date(e.occurred_at).toLocaleDateString()} - {e.reason}</strong>
-          {e.diagnosis && <p><b>Diagnostico:</b> {e.diagnosis}</p>}
-          {e.notes && <p>{e.notes}</p>}
-          {e.indications && <p><b>Indicaciones:</b> {e.indications}</p>}
-          {e.next_visit_at && <p><b>Proximo control orientativo:</b> {new Date(e.next_visit_at).toLocaleDateString()}</p>}
-        </article>
-      ))}
+      <section className="clinical-history-section">
+        <header>
+          <div><span>Historia clínica</span><h2>Evoluciones</h2><p>{clinicalHistory.length} registros · más reciente primero</p></div>
+          {canAccessClinical(profile) && <button className="secondary-action" onClick={() => void printClinicalHistory(currentPatient, profile)}>Descargar PDF</button>}
+        </header>
+        {profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas por RLS y no se muestran para secretaria.</p>}
+        {canAccessClinical(profile) && !clinicalHistory.length && <p className="empty-day">Todavía no hay evoluciones clínicas registradas.</p>}
+        {canAccessClinical(profile) && <div className="clinical-timeline">{clinicalHistory.map(e => (
+          <article className="clinical-entry" key={e.id}>
+            <time dateTime={e.occurred_at}><strong>{new Date(e.occurred_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}</strong><span>{new Date(e.occurred_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></time>
+            <div className="clinical-entry-content">
+              <h3>{e.reason || "Consulta / evolución"}</h3>
+              {e.diagnosis && <section><span>Diagnóstico</span><p>{e.diagnosis}</p></section>}
+              {e.notes && <section><span>Evolución</span><p>{e.notes}</p></section>}
+              {e.indications && <section className="clinical-indications"><span>Indicaciones</span><p>{e.indications}</p></section>}
+              {e.next_visit_at && <footer><b>Próximo control:</b> {new Date(`${e.next_visit_at}T12:00:00`).toLocaleDateString("es-AR")}</footer>}
+            </div>
+          </article>
+        ))}</div>}
+      </section>
       {(currentPatient.administrative_notes || []).map(n => <article className="timeline" key={n.id}><strong>Nota administrativa</strong><p>{n.text}</p></article>)}
       {(currentPatient.communications || []).map(c => <article className="timeline communication-timeline" key={c.id}><strong>{c.channel} · {(c.status||"ENVIADO_MANUAL").replace(/_/g," ")}</strong><small>{new Date(c.created_at||c.sent_at).toLocaleString("es-AR")}</small><p>{c.body}</p>{c.observation&&<p><b>Observacion:</b> {c.observation}</p>}</article>)}
     </Page>

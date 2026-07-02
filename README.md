@@ -270,6 +270,7 @@ Publicar la funcion segura desde una terminal con Supabase CLI:
 npx --yes supabase@latest login
 npx --yes supabase@latest functions deploy admin-manage-user --project-ref TU_PROJECT_REF
 npx --yes supabase@latest functions deploy request-user-access --project-ref TU_PROJECT_REF
+npx --yes supabase@latest functions deploy login-with-identifier --project-ref TU_PROJECT_REF
 npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.app,http://localhost:5173" --project-ref TU_PROJECT_REF
 ```
 

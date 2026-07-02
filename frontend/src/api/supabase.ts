@@ -494,14 +494,30 @@ export function formatDocumentNumber(type: IdentityDocumentType, value?: string 
   return normalized;
 }
 
-export async function signIn(email: string, password: string, remember = true) {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail || !password) throw new Error("Escribi el email y la contrasena.");
+export async function signIn(identifier: string, password: string, remember = true) {
+  const cleanIdentifier = identifier.trim().toLowerCase();
+  if (!cleanIdentifier || !password) throw new Error("Escribí tu usuario o email y la contraseña.");
 
   setRememberSessionPreference(remember);
 
-  const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-  if (error) throw new Error(authErrorMessage(error));
+  if (cleanIdentifier.includes("@")) {
+    const { error } = await supabase.auth.signInWithPassword({ email: cleanIdentifier, password });
+    if (error) throw new Error(authErrorMessage(error));
+  } else {
+    const documentNumber = cleanIdentifier.replace(/\D/g, "");
+    if (documentNumber.length < 6) throw new Error("Ingresá un DNI válido o tu email completo.");
+    const { data, error } = await supabase.functions.invoke("login-with-identifier", {
+      body: { identifier: documentNumber, password }
+    });
+    if (error || data?.error || !data?.access_token || !data?.refresh_token) {
+      throw new Error(data?.error || "Usuario o contraseña incorrectos.");
+    }
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token
+    });
+    if (sessionError) throw new Error("No se pudo iniciar la sesión.");
+  }
 
   try {
     const profile = await getCurrentProfile();
@@ -1341,6 +1357,11 @@ export async function setProfileActive(id: string, active: boolean) {
 export async function resetUserPasswordToDocument(userId: string) {
   const data = await invokeUserAdministration({ action: "reset_password", user_id: userId });
   return data as { temporary_password: string };
+}
+
+export async function enableUserWithoutEmailConfirmation(userId: string) {
+  const data = await invokeUserAdministration({ action: "confirm_email", user_id: userId });
+  return data as { enabled: boolean };
 }
 
 export async function deleteUserPermanently(userId: string) {

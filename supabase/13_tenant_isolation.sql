@@ -59,7 +59,8 @@ begin
  elsif tg_table_name='appointments' then select organization_id into inferred from public.locations where id=new.location_id;
  elsif tg_table_name='professional_specialties' or tg_table_name='professional_practices' then select organization_id into inferred from public.profiles where id=new.professional_id;
  elsif tg_table_name='appointment_practices' then select organization_id into inferred from public.appointments where id=new.appointment_id;
- elsif tg_table_name='holidays' and new.doctor_id is not null then select organization_id into inferred from public.profiles where id=new.doctor_id;
+ elsif tg_table_name='holidays' and nullif(to_jsonb(new)->>'doctor_id','') is not null then
+  select organization_id into inferred from public.profiles where id=(to_jsonb(new)->>'doctor_id')::uuid;
  end if;
  if inferred is not null then new.organization_id:=inferred; end if;
  return new;

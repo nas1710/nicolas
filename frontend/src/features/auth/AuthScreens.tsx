@@ -55,7 +55,8 @@ export function Login({ initialError = "", onLogin }: { initialError?: string; o
         </div>
         {mode !== "login" && <button type="button" className="link login-back" onClick={() => setMode("login")}>Volver al ingreso</button>}
         {mode === "request" && <label>Nombre completo<input value={fullName} onChange={event => setFullName(event.target.value)} onBlur={() => setFullName(formatProperName(fullName))} /></label>}
-        <label>Email<input value={email} onChange={event => setEmail(event.target.value)} /></label>
+        <label>{mode === "login" ? "Usuario o email" : "Email"}<input value={email} onChange={event => setEmail(event.target.value)} inputMode={mode === "login" ? "text" : "email"} autoComplete={mode === "login" ? "username" : "email"} placeholder={mode === "login" ? "DNI o nombre@correo.com" : "nombre@correo.com"} /></label>
+        {mode === "login" && <small className="login-identifier-hint">Podés ingresar con tu DNI, con o sin puntos, o con tu email.</small>}
         {mode !== "reset" && <label>Contrasena<PasswordInput value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="current-password" /></label>}
         {error ? <p className="error login-error">{error}</p> : null}
         {message && <p className="notice ok-notice">{message}</p>}

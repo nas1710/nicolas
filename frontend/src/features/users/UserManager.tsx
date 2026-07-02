@@ -10,6 +10,7 @@ import {
   ProfileInput,
   resetUserPasswordToDocument,
   deleteUserPermanently,
+  enableUserWithoutEmailConfirmation,
   setProfileActive,
   updateProfile
 } from "../../api/supabase";
@@ -50,7 +51,7 @@ export function UserManager({ users, locations, organizations, currentOrganizati
       <details className="user-create-panel">
         <summary>+ Nuevo usuario</summary>
         <div className="user-create-content">
-          <p className="notice">El DNI se usa como clave provisoria al blanquear el acceso. En el siguiente ingreso debe elegir una contrasena personal.</p>
+          <p className="notice ok-notice"><strong>Alta directa:</strong> el correo queda validado automáticamente y no se envía ningún mensaje de confirmación. La persona ingresa con la contraseña inicial y deberá cambiarla.</p>
           <form className="form-grid" onSubmit={submit}>
             <label>Email<input value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></label>
             <label>Contrasena inicial<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /></label>
@@ -128,6 +129,17 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
       setResetStatus(`Clave provisoria: ${result.temporary_password}. Debe cambiarla al ingresar.`);
     } catch (err) {
       setResetStatus(err instanceof Error ? err.message : "No se pudo blanquear");
+    }
+  }
+
+  async function enableAccess() {
+    setResetStatus("Habilitando acceso...");
+    try {
+      await enableUserWithoutEmailConfirmation(user.id);
+      setResetStatus("Acceso habilitado. El correo quedó validado sin enviar mensajes.");
+      await onSaved();
+    } catch (err) {
+      setResetStatus(err instanceof Error ? err.message : "No se pudo habilitar el acceso.");
     }
   }
 
@@ -212,6 +224,7 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
         <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
         <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
         <button type="button" onClick={() => void resetPassword()}>Blanquear clave</button>
+        <button type="button" onClick={() => void enableAccess()}>Habilitar sin email</button>
         {canManageAdministrators && <button type="button" className="danger-action" onClick={() => void deleteUser()}>Eliminar usuario</button>}
       </div>
       {resetStatus && <small className="user-reset-status">{resetStatus}</small>}
