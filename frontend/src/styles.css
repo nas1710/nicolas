@@ -2782,6 +2782,40 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   margin-bottom: 20px;
 }
 
+.public-professional-choice {
+  margin: 4px 0 16px;
+  padding: 13px;
+  border: 1px solid #cbdadd;
+  background: #f5f9fa;
+  border-radius: 7px;
+}
+
+.public-choice-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.public-choice-heading strong { font-size: 16px; }
+.public-choice-heading small { color: #66777f; }
+
+.doctor-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #dce9eb;
+  color: #31565a;
+  font-weight: 900;
+}
+
+.doctor-option.selected .doctor-avatar {
+  background: #176f78;
+  color: #fff;
+}
+
 .role-simulator {
   display: grid;
   gap: 7px;

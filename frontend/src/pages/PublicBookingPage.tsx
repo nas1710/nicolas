@@ -49,7 +49,12 @@ export function PublicBookingPage() {
     document: "", phone: "", email: "", insurance_plan_id: "", website: ""
   });
 
-  const visiblePractices = catalog.practices.filter(practice => !specialtyId || practice.specialty_id === specialtyId);
+  const specialtyProfessionals = catalog.professionals.filter(professional => !specialtyId || professional.specialty_ids.includes(specialtyId));
+  const selectedProfessional = catalog.professionals.find(professional => professional.id === doctorId);
+  const visiblePractices = catalog.practices.filter(practice =>
+    (!specialtyId || practice.specialty_id === specialtyId)
+    && (!selectedProfessional || selectedProfessional.practice_ids.includes(practice.id))
+  );
   const availableDates = useMemo<PublicBookingDate[]>(() => {
     const counts = new Map<string, number>();
     searchSlots.forEach(slot => {
@@ -59,7 +64,6 @@ export function PublicBookingPage() {
     return Array.from(counts, ([availableDate, available_count]) => ({ date: availableDate, available_count }));
   }, [searchSlots]);
   const daySlots = searchSlots.filter(slot => buenosAiresDate(slot.starts_at) === date);
-  const doctorOptions = uniqueOptions(searchSlots.map(slot => ({ id: slot.doctor_id, label: slot.doctor_name })));
   const locationOptions = uniqueOptions(searchSlots.map(slot => ({ id: slot.location_id, label: slot.location_name })));
   const nextAvailableDays = availableDates.filter(item => item.date >= today).slice(0, 8);
 
@@ -141,7 +145,7 @@ export function PublicBookingPage() {
       <BookingBrand organization={organization} showLogin />
       <main className="public-booking-main">
         <div className="public-booking-title">
-          <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Buscá por especialidad. El profesional y el centro aparecen en cada opción disponible.</p></div>
+          <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Elegí la especialidad, el profesional que preferís y un horario disponible.</p></div>
           <ol><li className="active">Búsqueda</li><li className={selectedSlot ? "active" : ""}>Datos</li><li>Confirmación</li></ol>
         </div>
         <form className="public-booking-layout" onSubmit={submit}>
@@ -151,15 +155,25 @@ export function PublicBookingPage() {
               {catalog.specialties.map(specialty => <button type="button" key={specialty.id} className={specialtyId === specialty.id ? "active" : ""} onClick={() => { const options = catalog.practices.filter(item => item.specialty_id === specialty.id); setSpecialtyId(specialty.id); setPracticeIds(options[0] ? [options[0].id] : []); setDoctorId(""); setLocationId(""); }}>{specialty.name}</button>)}
             </div>
             {loadingCatalog && <p className="empty-day">Cargando opciones...</p>}
+            {specialtyId && <div className="public-professional-choice">
+              <div className="public-choice-heading"><strong>¿Con qué especialista querés atenderte?</strong><small>Elegí uno o compará el primer turno disponible entre todos.</small></div>
+              <div className="doctor-options">
+                <button type="button" className={!doctorId ? "doctor-option selected" : "doctor-option"} onClick={() => { const options = catalog.practices.filter(item => item.specialty_id === specialtyId); setDoctorId(""); setPracticeIds(current => { const supported = current.filter(id => options.some(item => item.id === id)); return supported.length ? supported : options[0] ? [options[0].id] : []; }); }}>
+                  <span className="doctor-avatar">1°</span><span><strong>Primer profesional disponible</strong><small>Compara todos los horarios</small></span>
+                </button>
+                {specialtyProfessionals.map(professional => <button type="button" key={professional.id} className={doctorId === professional.id ? "doctor-option selected" : "doctor-option"} onClick={() => { const options = catalog.practices.filter(item => item.specialty_id === specialtyId && professional.practice_ids.includes(item.id)); setDoctorId(professional.id); setPracticeIds(current => { const supported = current.filter(id => options.some(item => item.id === id)); return supported.length ? supported : options[0] ? [options[0].id] : []; }); }}>
+                  <span className="doctor-avatar">{professional.full_name.split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase()}</span><span><strong>{professional.full_name}</strong><small>{professional.specialty || catalog.specialties.find(item => item.id === specialtyId)?.name || "Profesional"}</small></span>
+                </button>)}
+              </div>
+            </div>}
             <fieldset className="public-practice-picker"><legend>Prácticas disponibles</legend>
               {visiblePractices.map(practice => <label key={practice.id} className={`practice-tone-${practiceTone(practice.name)} ${practiceIds.includes(practice.id) ? "selected" : ""}`}><input type="checkbox" checked={practiceIds.includes(practice.id)} onChange={() => setPracticeIds(current => current.includes(practice.id) ? current.filter(id => id !== practice.id) : [...current, practice.id])} /><span><strong>{practice.name}</strong><small>{practice.duration_min} min</small></span></label>)}
               {!loadingCatalog && specialtyId && !visiblePractices.length && <p>No hay prácticas publicadas para esta especialidad.</p>}
             </fieldset>
 
             {practiceIds.length > 0 && <>
-              <SectionTitle number="2" title="Elegí un turno disponible" subtitle="Primero te mostramos las fechas más próximas. Si preferís, filtrá por profesional o centro." />
-              {(doctorOptions.length > 1 || locationOptions.length > 1) && <div className="public-booking-filters">
-                {doctorOptions.length > 1 && <div><strong>Profesional</strong><div className="filter-chips"><button type="button" className={!doctorId ? "active" : ""} onClick={() => setDoctorId("")}>Cualquiera</button>{doctorOptions.map(item => <button type="button" key={item.id} className={doctorId === item.id ? "active" : ""} onClick={() => setDoctorId(item.id)}>{item.label}</button>)}</div></div>}
+              <SectionTitle number="2" title="Elegí un turno disponible" subtitle="Te mostramos primero las fechas más próximas." />
+              {locationOptions.length > 1 && <div className="public-booking-filters">
                 {locationOptions.length > 1 && <div><strong>Centro</strong><div className="filter-chips"><button type="button" className={!locationId ? "active" : ""} onClick={() => setLocationId("")}>Todos</button>{locationOptions.map(item => <button type="button" key={item.id} className={locationId === item.id ? "active" : ""} onClick={() => setLocationId(item.id)}>{item.label}</button>)}</div></div>}
               </div>}
               {nextAvailableDays.length > 0 && <div className="availability-day-strip" aria-label="Próximas fechas disponibles">
