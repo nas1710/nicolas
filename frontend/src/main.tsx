@@ -2409,6 +2409,7 @@ function Settings({ profile }: { profile: Profile }) {
   const [professionals, setProfessionals] = useState<Profile[]>([]);
   type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
+  const hasOwnProfessionalProfile = isDoctorRole(profile.role) && !profile.simulated;
   const modules: Array<{ id: SettingsModule; label: string; hint: string; icon: React.ElementType }> = [
     ...(isOrganizationAdmin ? [
       { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes", icon: Building2 },
@@ -2419,7 +2420,7 @@ function Settings({ profile }: { profile: Profile }) {
     ] : []),
     { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables", icon: CalendarDays },
     { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles", icon: ClipboardList },
-    ...(canAccessClinical(profile) ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos", icon: FileSignature }] : [])
+    ...(hasOwnProfessionalProfile ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos", icon: FileSignature }] : [])
   ];
   const [module, setModule] = useState<SettingsModule>(isOrganizationAdmin ? "organizacion" : "agenda");
 
@@ -2448,7 +2449,7 @@ function Settings({ profile }: { profile: Profile }) {
             {module === "comunicaciones" && isOrganizationAdmin && <CommunicationTemplateManager />}
             {module === "coberturas" && <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />}
             {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} professionals={professionals} currentProfile={profile} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
-            {module === "documentos" && canAccessClinical(profile) && <ProfessionalDocumentSettings profile={profile} />}
+            {module === "documentos" && hasOwnProfessionalProfile && <ProfessionalDocumentSettings profile={profile} />}
             {module === "auditoria" && isOrganizationAdmin && <AuditLogManager />}
           </div>
         </div>

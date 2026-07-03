@@ -118,6 +118,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 - Las secretarias acceden a pacientes mediante `patient_locations`.
 - Los pacientes web pendientes solo son visibles y validables por el profesional del turno, sus secretarias asignadas y administracion.
 - Ejecutar `19_professional_secretaries_and_web_workflow.sql` despues de `18_clinical_timeline.sql` en una base existente.
+- Ejecutar `20_professional_profile_permissions.sql` a continuacion para separar perfil medico y permisos administrativos.
 - Las evoluciones clinicas quedan restringidas a medica/admin.
 - El rol anonimo solo ejecuta los RPC publicos expresamente concedidos.
 - Buckets privados requeridos: `patient-files` y `professional-signatures`.
