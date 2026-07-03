@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, Building2, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UsersRound } from "lucide-react";
+import { AlertTriangle, Bell, Building2, CalendarClock, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UserCheck, UsersRound, XCircle } from "lucide-react";
 import {
   Appointment,
   AppointmentStatus,
@@ -1789,22 +1789,47 @@ function NotificationBell({ onOpenPatient }: { onOpenPatient: (id: string) => vo
     return () => window.clearInterval(timer);
   }, []);
 
+  const orderedAlerts = [...alerts].sort((a, b) => notificationPriority(a.kind) - notificationPriority(b.kind));
+
   return <div className="notification-center">
     <button type="button" className="notification-trigger" title="Avisos pendientes" aria-label={`${alerts.length} avisos pendientes`} onClick={() => setOpen(value => !value)}>
       <Bell size={20} />
       {alerts.length > 0 && <span>{alerts.length > 99 ? "99+" : alerts.length}</span>}
     </button>
     {open && <div className="notification-popover">
-      <header><strong>Avisos</strong><button type="button" className="icon-only" aria-label="Cerrar avisos" onClick={() => setOpen(false)}>×</button></header>
-      <div>
-        {alerts.map((alert, index) => <button type="button" key={`${alert.kind}-${alert.appointment_id || alert.patient_id}-${index}`} onClick={() => { setOpen(false); onOpenPatient(alert.patient_id); }}>
-          <strong>{alert.title}</strong>
-          <small>{alert.detail}{alert.due_at ? ` · ${new Date(alert.due_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "short" })}` : ""}</small>
+      <header><div><span>Centro de avisos</span><strong>{alerts.length ? `${alerts.length} ${alerts.length === 1 ? "acción pendiente" : "acciones pendientes"}` : "Todo al día"}</strong></div><button type="button" className="icon-only" aria-label="Cerrar avisos" onClick={() => setOpen(false)}>×</button></header>
+      <div className="notification-list">
+        {orderedAlerts.map((alert, index) => <button type="button" className={`notification-item tone-${notificationTone(alert.kind)}`} key={`${alert.kind}-${alert.appointment_id || alert.patient_id}-${index}`} onClick={() => { setOpen(false); onOpenPatient(alert.patient_id); }}>
+          <span className="notification-icon">{notificationIcon(alert.kind)}</span>
+          <span className="notification-copy"><em>{notificationKindLabel(alert.kind)}</em><strong>{alert.title.replace(/^(Cancelado|Validar datos|Recordatorio pendiente|Fallo el recordatorio):\s*/i, "")}</strong><small>{alert.detail}{alert.due_at ? ` · ${new Date(alert.due_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "short" })}` : ""}</small></span>
+          <span className="notification-action">Abrir</span>
         </button>)}
         {!alerts.length && <p>No hay avisos pendientes.</p>}
       </div>
     </div>}
   </div>;
+}
+
+function notificationTone(kind: string) {
+  if (["CANCELLED_RECENT", "REMINDER_FAILED"].includes(kind)) return "danger";
+  if (["WEB_PATIENT_PENDING", "MISSING_DOCUMENTATION"].includes(kind)) return "warning";
+  if (["UPCOMING_NO_CONTACT", "PENDING_CONFIRMATION"].includes(kind)) return "info";
+  return "neutral";
+}
+
+function notificationPriority(kind: string) {
+  return { REMINDER_FAILED: 0, CANCELLED_RECENT: 1, WEB_PATIENT_PENDING: 2, MISSING_DOCUMENTATION: 3, UPCOMING_NO_CONTACT: 4, PENDING_CONFIRMATION: 5 }[kind] ?? 9;
+}
+
+function notificationKindLabel(kind: string) {
+  return { REMINDER_FAILED: "Error de envío", CANCELLED_RECENT: "Turno cancelado", WEB_PATIENT_PENDING: "Validar paciente", MISSING_DOCUMENTATION: "Documentación", UPCOMING_NO_CONTACT: "Recordatorio", PENDING_CONFIRMATION: "Confirmación" }[kind] || "Aviso";
+}
+
+function notificationIcon(kind: string) {
+  if (kind === "CANCELLED_RECENT") return <XCircle size={21} />;
+  if (kind === "REMINDER_FAILED") return <AlertTriangle size={21} />;
+  if (kind === "WEB_PATIENT_PENDING") return <UserCheck size={21} />;
+  return <CalendarClock size={21} />;
 }
 
 type PatientTimelineItem =
