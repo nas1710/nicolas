@@ -2,6 +2,386 @@
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
   color: #162127;
   background: #f5f7f9;
+  --action: #08766f;
+  --action-hover: #055e59;
+  --selection: #2368a2;
+  --selection-soft: #e6f0fa;
+  --success: #218451;
+  --success-soft: #e6f6ed;
+  --warning: #b87506;
+  --warning-soft: #fff4d7;
+  --danger: #bd343c;
+  --danger-soft: #fff0f1;
+  --info: #2d6f9f;
+  --info-soft: #eaf3fa;
+  --ink: #17252b;
+  --muted: #60737b;
+  --line: #cfdbdf;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f6;
+}
+
+/* Semantic visual language: actions, selection, state and read-only information. */
+button,
+a,
+input,
+select,
+textarea {
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(35, 104, 162, .24);
+  outline-offset: 2px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--selection) !important;
+  box-shadow: 0 0 0 3px rgba(35, 104, 162, .12);
+}
+
+label {
+  color: #40555d;
+  font-weight: 760;
+}
+
+.primary,
+.clinical-actions .primary,
+.public-submit {
+  border: 1px solid var(--action) !important;
+  background: var(--action) !important;
+  color: white !important;
+  font-weight: 850 !important;
+  box-shadow: 0 5px 13px rgba(8, 118, 111, .2);
+}
+
+.primary:hover,
+.clinical-actions .primary:hover,
+.public-submit:hover {
+  border-color: var(--action-hover) !important;
+  background: var(--action-hover) !important;
+  transform: translateY(-1px);
+}
+
+.secondary-action {
+  border: 1px solid #9eb3ba !important;
+  background: white !important;
+  color: #294b56 !important;
+  font-weight: 780 !important;
+}
+
+.secondary-action:hover {
+  border-color: var(--selection) !important;
+  background: var(--selection-soft) !important;
+  color: #174c77 !important;
+}
+
+.danger-action {
+  border: 1px solid #e0a3a7 !important;
+  background: var(--danger-soft) !important;
+  color: #9e2029 !important;
+  font-weight: 850 !important;
+}
+
+.danger-action:hover {
+  border-color: var(--danger) !important;
+  background: #ffe1e3 !important;
+}
+
+.link {
+  color: var(--selection);
+  text-decoration: underline;
+  text-decoration-color: rgba(35, 104, 162, .35);
+  text-underline-offset: 3px;
+}
+
+.panel,
+.card,
+.patient-card,
+.agenda-day,
+.agenda-detail-panel {
+  border-color: var(--line);
+  box-shadow: 0 6px 18px rgba(26, 53, 64, .065);
+}
+
+.page-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #d8e2e5;
+}
+
+.page-head h1 { color: #122f39; }
+.page-head p { color: var(--muted); }
+
+.page-head > div:last-child > button:not(.primary):not(.danger-action) {
+  border: 1px solid #b9c9ce;
+  background: white;
+  color: #294b56;
+  font-weight: 780;
+}
+
+.segmented {
+  border: 1px solid #ccd9dd;
+  background: #e9eff1;
+}
+
+.segmented button { color: #53676f; }
+.segmented button.active {
+  background: var(--selection);
+  color: white;
+  box-shadow: 0 3px 9px rgba(35, 104, 162, .22);
+}
+
+.settings-modules {
+  border-color: #bfcfd3;
+  background: #e9eff1;
+}
+
+.settings-modules button {
+  border-color: transparent;
+  border-left: 4px solid transparent;
+  background: #f9fbfb;
+}
+
+.settings-modules button:hover {
+  border-color: #a7bdc2;
+  border-left-color: var(--selection);
+  background: white;
+}
+
+.settings-modules button.active {
+  border-color: var(--selection);
+  background: var(--selection);
+  color: white;
+  box-shadow: 0 6px 16px rgba(35, 104, 162, .22);
+}
+
+.nav-item.active {
+  background: #f4fbfa;
+  color: #102f36;
+  box-shadow: inset 4px 0 var(--action), 0 7px 17px rgba(0,0,0,.14);
+}
+
+.nav-item.active .nav-icon {
+  background: var(--action);
+  color: white;
+}
+
+.nav-cta {
+  background: #f4c84d;
+  color: #392a00;
+  border: 1px solid #e4b92e;
+}
+
+.summary div,
+.patient-quick-data span,
+.detail-grid div {
+  border: 1px solid #d9e3e6;
+  background: var(--surface-muted);
+  color: #40575f;
+  box-shadow: none;
+}
+
+.summary div { border-top: 3px solid #92aeb5; }
+.summary div strong { color: var(--ink); }
+
+.clinical-actions {
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid #cbd8dc;
+  border-radius: 9px;
+  background: #eaf0f2;
+}
+
+.clinical-actions button {
+  min-height: 46px;
+  border: 1px solid transparent;
+  background: white;
+  color: #36515a;
+}
+
+.clinical-actions button:not(.primary):not(.danger-action):hover {
+  border-color: var(--selection);
+  color: #174c77;
+}
+
+.quick-actions .open-patient {
+  border: 1px solid var(--selection);
+  background: var(--selection);
+  color: white;
+}
+
+.quick-actions a,
+.quick-actions button:not(.open-patient):not(.validate-patient-action) {
+  border: 1px solid #a6c9cf;
+  background: white;
+  color: #155f6b;
+}
+
+.validate-patient-action {
+  border: 1px solid #d6a334 !important;
+  background: var(--warning-soft) !important;
+  color: #744900 !important;
+}
+
+.badge.ok {
+  border: 1px solid #9fd0b4;
+  background: var(--success-soft);
+  color: #12653b;
+}
+
+.badge.muted {
+  border: 1px solid #ccd6da;
+  background: #edf1f2;
+  color: #617078;
+}
+
+.badge.master {
+  border: 1px solid #e2bd60;
+  background: var(--warning-soft);
+  color: #714800;
+}
+
+.notice {
+  border: 1px solid #e5c16f;
+  border-left: 5px solid var(--warning);
+  background: var(--warning-soft);
+  color: #654714;
+}
+
+.ok-notice {
+  border-color: #95cfad;
+  border-left-color: var(--success);
+  background: var(--success-soft);
+  color: #145d38;
+}
+
+p.error,
+.error-panel .error {
+  padding: 10px 12px;
+  border: 1px solid #e6a5aa;
+  border-left: 5px solid var(--danger);
+  border-radius: 7px;
+  background: var(--danger-soft);
+  color: #9f242d;
+}
+
+.patient-card {
+  border-left: 4px solid #9bb0b6;
+}
+
+.patient-card:hover {
+  border-left-color: var(--selection);
+  box-shadow: 0 9px 22px rgba(35, 104, 162, .11);
+}
+
+.patient-card:has(.pending-validation-badge) {
+  border-left-color: var(--warning);
+  background: #fffdf7;
+}
+
+.patient-card.is-inactive {
+  border-left-color: #8a969b;
+  background: #f1f3f4;
+}
+
+.pending-validation-badge {
+  border: 1px solid #e1bd62;
+  background: var(--warning-soft);
+  color: #784d00;
+}
+
+.appointment-card.free-slot {
+  border: 1px dashed #73bba9;
+  border-left: 5px solid #73bba9;
+  background: #f3fbf8;
+}
+
+.appointment-card.occupied-slot {
+  border: 1px solid #a9bfd2;
+  border-left-width: 6px;
+  background: var(--selection-soft);
+}
+
+.appointment-card.status-pendiente {
+  border-color: #d7b553;
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.appointment-card.status-ausente {
+  border-color: #dfa2a6;
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.appointment-card.status-recordatorio-enviado {
+  border-color: #8dc8ba;
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+
+.public-specialty-options button,
+.filter-chips button,
+.doctor-option,
+.public-practice-picker label,
+.public-slot {
+  border-width: 1px;
+  box-shadow: 0 2px 6px rgba(26, 53, 64, .04);
+}
+
+.public-specialty-options button.active,
+.filter-chips button.active,
+.doctor-option.selected {
+  border-color: var(--selection);
+  background: var(--selection-soft);
+  color: #174c77;
+  box-shadow: inset 4px 0 var(--selection), 0 5px 13px rgba(35, 104, 162, .11);
+}
+
+.public-calendar-grid button.available {
+  border-color: #6eb9a4;
+  background: var(--success-soft);
+  color: #12613c;
+}
+
+.public-calendar-grid button.selected {
+  border-color: var(--selection);
+  background: var(--selection);
+  color: white;
+  box-shadow: 0 4px 12px rgba(35, 104, 162, .26);
+}
+
+.public-slot {
+  border-color: #78b9aa;
+  background: #eef9f5;
+  color: #145d48;
+}
+
+.public-slot:hover,
+.public-slot.selected {
+  border-color: var(--action);
+  background: var(--action);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(8, 118, 111, .22);
+}
+
+table th {
+  border-bottom: 2px solid #9eb5bc;
+  background: #e5edef;
+  color: #304a53;
+}
+
+table tbody tr:hover { background: #f1f7fa; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
 
 * { box-sizing: border-box; }
@@ -3757,3 +4137,56 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
     gap: 3px;
   }
 }
+
+/* Final semantic overrides intentionally remain last while legacy CSS is consolidated. */
+body .panel,
+body .card,
+body .patient-card,
+body .agenda-day,
+body .agenda-detail-panel { border-color: var(--line); box-shadow: 0 6px 18px rgba(26,53,64,.065); }
+
+body .page-head { padding-bottom: 14px; border-bottom: 1px solid #d8e2e5; }
+body .page-head h1 { color: #122f39; }
+
+body .segmented { border: 1px solid #ccd9dd; background: #e9eff1; }
+body .segmented button.active { background: var(--selection); color: white; box-shadow: 0 3px 9px rgba(35,104,162,.22); }
+body .secondary-action { border: 1px solid #9eb3ba !important; background: white !important; color: #294b56 !important; font-weight: 780 !important; }
+body .secondary-action:hover { border-color: var(--selection) !important; background: var(--selection-soft) !important; color: #174c77 !important; }
+
+body .settings-modules { border-color: #bfcfd3; background: #e9eff1; }
+body .settings-modules button { border-color: transparent; border-left: 4px solid transparent; background: #f9fbfb; }
+body .settings-modules button:hover { border-color: #a7bdc2; border-left-color: var(--selection); background: white; }
+body .settings-modules button.active { border-color: var(--selection); background: var(--selection); color: white; }
+
+body .nav-item.active { background: #f4fbfa; color: #102f36; box-shadow: inset 4px 0 var(--action), 0 7px 17px rgba(0,0,0,.14); }
+body .nav-item.active .nav-icon { background: var(--action); color: white; }
+
+body .summary div,
+body .patient-quick-data span,
+body .detail-grid div { border: 1px solid #d9e3e6; background: var(--surface-muted); color: #40575f; box-shadow: none; }
+body .summary div { border-top: 3px solid #92aeb5; }
+
+body .clinical-actions { gap: 7px; padding: 6px; border: 1px solid #cbd8dc; border-radius: 9px; background: #eaf0f2; }
+body .clinical-actions button:not(.primary):not(.danger-action) { border: 1px solid transparent; background: white; color: #36515a; }
+
+body .patient-card { border-left: 4px solid #9bb0b6; }
+body .patient-card:hover { border-left-color: var(--selection); box-shadow: 0 9px 22px rgba(35,104,162,.11); }
+body .patient-card:has(.pending-validation-badge) { border-left-color: var(--warning); background: #fffdf7; }
+body .patient-card.is-inactive { border-left-color: #8a969b; background: #f1f3f4; }
+
+body .appointment-card.free-slot { border: 1px dashed #73bba9; border-left: 5px solid #73bba9; background: #f3fbf8; }
+body .appointment-card.occupied-slot { border: 1px solid #a9bfd2; border-left-width: 6px; background: var(--selection-soft); }
+body .appointment-card.status-pendiente { border-color: #d7b553; border-left-color: var(--warning); background: var(--warning-soft); }
+body .appointment-card.status-ausente { border-color: #dfa2a6; border-left-color: var(--danger); background: var(--danger-soft); }
+body .appointment-card.status-recordatorio-enviado { border-color: #8dc8ba; border-left-color: var(--success); background: var(--success-soft); }
+
+body .public-specialty-options button.active,
+body .filter-chips button.active,
+body .doctor-option.selected { border-color: var(--selection); background: var(--selection-soft); color: #174c77; box-shadow: inset 4px 0 var(--selection), 0 5px 13px rgba(35,104,162,.11); }
+body .public-specialty-options button.active,
+body .doctor-option.selected { font-weight: 800; }
+body .public-calendar-grid button.available { border-color: #6eb9a4; background: var(--success-soft); color: #12613c; }
+body .public-calendar-grid button.selected { border-color: var(--selection); background: var(--selection); color: white; box-shadow: 0 4px 12px rgba(35,104,162,.26); }
+body .public-slot { border-color: #78b9aa; background: #eef9f5; color: #145d48; }
+body .public-slot:hover,
+body .public-slot.selected { border-color: var(--action); background: var(--action); color: white; box-shadow: 0 6px 14px rgba(8,118,111,.22); }
