@@ -238,6 +238,17 @@ function App() {
     setMobileMoreOpen(false);
   };
 
+  const openPatientHistory = (patientId: string) => {
+    if (!patientId) return;
+    setSelectedPatientId(null);
+    setView("pacientes");
+    setNewAppointmentKey(0);
+    setNewPatientKey(0);
+    setMobileMoreOpen(false);
+    setViewResetKey(key => key + 1);
+    window.setTimeout(() => setSelectedPatientId(patientId), 0);
+  };
+
   return (
     <div className={menuCollapsed ? "shell menu-collapsed" : "shell"}>
       <aside className="sidebar">
@@ -255,7 +266,7 @@ function App() {
           {simulatedRole === "MEDICO" && <select aria-label="Profesional para vista Medico" value={simulatedProfessionalId || simulationProfessionals[0]?.id || ""} onChange={event => setSimulatedProfessionalId(event.target.value)}>{simulationProfessionals.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}</select>}
           {simulatedRole && <small>Simulacion visual; conserva tu identidad real.</small>}
         </div>}
-        <NotificationBell onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); setMobileMoreOpen(false); }} />
+        <NotificationBell onOpenPatient={openPatientHistory} />
         <button className="nav-cta" onClick={navigateNewAppointment}>
           <span>+</span>
           Nuevo turno
@@ -289,11 +300,11 @@ function App() {
       </aside>
       <main>
         <CommercialAccountBanner profile={profile} />
-        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} profile={operationalProfile} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={operationalProfile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
-        {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={operationalProfile} openNewKey={newAppointmentKey} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "inicio" && <Dashboard key={`inicio-${viewResetKey}`} profile={operationalProfile} onNavigate={navigate} onReports={() => navigate("reportes")} onNewPatient={navigateNewPatient} onOpenPatient={openPatientHistory} />}
+        {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={operationalProfile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={openPatientHistory} />}
+        {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={operationalProfile} openNewKey={newAppointmentKey} onOpenPatient={openPatientHistory} />}
         {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={operationalProfile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
-        {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); }} />}
+        {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={openPatientHistory} />}
         {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && canManageConfiguration(operationalProfile) && <Settings key={`ajustes-${viewResetKey}`} profile={operationalProfile} />}
         {view === "usuarios" && canManageUsers(operationalProfile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
@@ -844,6 +855,9 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   const [patientNotice, setPatientNotice] = useState("");
   const [loadError, setLoadError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailRetry, setDetailRetry] = useState(0);
 
   async function refresh() {
     try {
@@ -856,13 +870,31 @@ function Patients({ profile, selectedId, openNewKey, onSelect, onClose }: { prof
   }
 
   useEffect(() => { refresh(); }, [query]);
-  useEffect(() => { selectedId ? getPatient(selectedId).then(setDetail) : setDetail(null); }, [selectedId]);
+  useEffect(() => {
+    let current = true;
+    if (!selectedId) {
+      setDetail(null);
+      setDetailError("");
+      setDetailLoading(false);
+      return () => { current = false; };
+    }
+    setDetail(null);
+    setDetailError("");
+    setDetailLoading(true);
+    getPatient(selectedId)
+      .then(patient => { if (current) setDetail(patient); })
+      .catch(error => { if (current) setDetailError(error instanceof Error ? error.message : "No se pudo abrir la historia clinica."); })
+      .finally(() => { if (current) setDetailLoading(false); });
+    return () => { current = false; };
+  }, [selectedId, detailRetry]);
   useEffect(() => { if (openNewKey) setShowForm(true); }, [openNewKey]);
 
   const visiblePatients = patients.filter(patient => showInactive || patient.status !== "baja");
   const inactiveCount = patients.filter(patient => patient.status === "baja").length;
 
   if (selectedId && detail) return <PatientChart patient={detail} profile={profile} notice={patientNotice} onBack={() => { setPatientNotice(""); onClose(); }} />;
+  if (selectedId && detailLoading) return <Page title="Historia clinica" subtitle="Abriendo la ficha del paciente"><section className="panel patient-history-loading"><strong>Cargando historia clinica...</strong><p>Estamos recuperando evoluciones, estudios y turnos.</p></section></Page>;
+  if (selectedId && detailError) return <Page title="No se pudo abrir la historia" subtitle="La ficha no se cargo correctamente" actions={<button onClick={onClose}>Volver a pacientes</button>}><section className="panel"><p className="error">{detailError}</p><button className="primary" onClick={() => setDetailRetry(value => value + 1)}>Reintentar</button></section></Page>;
 
   return (
     <Page title="Pacientes" subtitle="Buscar y abrir ficha clinica" actions={<button className="primary" onClick={() => setShowForm(value => !value)}>+ Nuevo paciente</button>}>
