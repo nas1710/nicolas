@@ -299,6 +299,7 @@ export type Communication = {
 };
 export type CommunicationTemplate = { id:string;name:string;kind:string;channel:"WHATSAPP"|"EMAIL"|"PHONE";subject:string;body:string;active:boolean };
 export type CommunicationAlert = { kind:string;appointment_id:string|null;patient_id:string;title:string;due_at:string|null;detail:string };
+export type ProfessionalSecretaryAssignment = { professional_id:string; secretary_id:string; active:boolean };
 export type AuditLog = {
   id: string;
   action: string;
@@ -1040,6 +1041,23 @@ export async function listPublicBookingDates(doctorId: string, from: string, to:
   }
   throwIfError(error);
   return (data || []) as PublicBookingDate[];
+}
+
+export async function listProfessionalSecretaryAssignments() {
+  const { data, error } = await supabase
+    .from("professional_secretaries")
+    .select("professional_id,secretary_id,active")
+    .eq("active", true);
+  throwIfError(error);
+  return (data || []) as ProfessionalSecretaryAssignment[];
+}
+
+export async function setSecretaryProfessionals(secretaryId: string, professionalIds: string[]) {
+  const { error } = await supabase.rpc("set_secretary_professionals", {
+    p_secretary_id: secretaryId,
+    p_professional_ids: professionalIds
+  });
+  throwIfError(error);
 }
 
 export async function listAuditLogs(filters: { action?: string; entity?: string; from?: string; to?: string } = {}) {

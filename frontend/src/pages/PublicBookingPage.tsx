@@ -192,8 +192,8 @@ export function PublicBookingPage() {
               <label className="booking-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={patient.website} onChange={event => setPatient({ ...patient, website: event.target.value })} /></label>
             </div></fieldset>
             {error && <p className="error public-booking-error">{error}</p>}
-            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Enviando solicitud..." : "Solicitar turno"}</button>
-            <small className="privacy-copy">La solicitud queda pendiente hasta que el centro la confirme.</small>
+            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Reservando..." : "Reservar turno"}</button>
+            <small className="privacy-copy">Al reservar, el horario queda asignado. El consultorio podrá solicitar una confirmación de asistencia más adelante.</small>
           </section>
         </form>
       </main>
@@ -216,7 +216,7 @@ function SelectedSlot({ slot }: { slot: PublicBookingSearchSlot }) {
 
 function BookingConfirmation({ result, organization }: { result: PublicBookingResult; organization: OrganizationSettings | null }) {
   const startsAt = new Date(result.starts_at);
-  return <div className="public-booking-page" style={organizationTheme(organization)}><BookingBrand organization={organization} /><main className="public-booking-main confirmation-view"><section className="public-confirmation"><span className="confirmation-mark">OK</span><h1>Solicitud recibida</h1><p>El centro revisará la solicitud y confirmará el turno por tus datos de contacto.</p><dl><div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div><div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div><div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Centro</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div><div><dt>Estado</dt><dd>Pendiente de confirmación</dd></div></dl><button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button></section></main></div>;
+  return <div className="public-booking-page" style={organizationTheme(organization)}><BookingBrand organization={organization} /><main className="public-booking-main confirmation-view"><section className="public-confirmation"><span className="confirmation-mark">OK</span><h1>Turno reservado</h1><p>El horario ya quedó asignado. Guardá estos datos para tu atención.</p><dl><div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div><div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div><div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Centro</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div><div><dt>Estado</dt><dd>Reservado</dd></div></dl><button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button></section></main></div>;
 }
 
 function BookingBrand({ organization, showLogin = false }: { organization: OrganizationSettings | null; showLogin?: boolean }) {

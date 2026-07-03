@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Building2, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UsersRound } from "lucide-react";
+import { Bell, Building2, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UsersRound } from "lucide-react";
 import {
   Appointment,
   AppointmentStatus,
@@ -63,6 +63,8 @@ import {
   Attachment
   ,AuditLog
   ,listAuditLogs
+  ,CommunicationAlert
+  ,listCommunicationAlerts
 } from "./api/supabase";
 import { Modal, NavButton, Page, Stat, Table } from "./components/ui";
 import {
@@ -253,6 +255,7 @@ function App() {
           {simulatedRole === "MEDICO" && <select aria-label="Profesional para vista Medico" value={simulatedProfessionalId || simulationProfessionals[0]?.id || ""} onChange={event => setSimulatedProfessionalId(event.target.value)}>{simulationProfessionals.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}</select>}
           {simulatedRole && <small>Simulacion visual; conserva tu identidad real.</small>}
         </div>}
+        <NotificationBell onOpenPatient={id => { setView("pacientes"); setSelectedPatientId(id); setMobileMoreOpen(false); }} />
         <button className="nav-cta" onClick={navigateNewAppointment}>
           <span>+</span>
           Nuevo turno
@@ -1722,6 +1725,38 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
 
 function printClinicalHistory(patient: Patient, profile: Profile) {
   void printInstitutionalPdf({ patient, profile, kind: "HISTORY" });
+}
+
+function NotificationBell({ onOpenPatient }: { onOpenPatient: (id: string) => void }) {
+  const [alerts, setAlerts] = useState<CommunicationAlert[]>([]);
+  const [open, setOpen] = useState(false);
+
+  async function refresh() {
+    setAlerts(await listCommunicationAlerts().catch(() => []));
+  }
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <div className="notification-center">
+    <button type="button" className="notification-trigger" title="Avisos pendientes" aria-label={`${alerts.length} avisos pendientes`} onClick={() => setOpen(value => !value)}>
+      <Bell size={20} />
+      {alerts.length > 0 && <span>{alerts.length > 99 ? "99+" : alerts.length}</span>}
+    </button>
+    {open && <div className="notification-popover">
+      <header><strong>Avisos</strong><button type="button" className="icon-only" aria-label="Cerrar avisos" onClick={() => setOpen(false)}>×</button></header>
+      <div>
+        {alerts.map((alert, index) => <button type="button" key={`${alert.kind}-${alert.appointment_id || alert.patient_id}-${index}`} onClick={() => { setOpen(false); onOpenPatient(alert.patient_id); }}>
+          <strong>{alert.title}</strong>
+          <small>{alert.detail}{alert.due_at ? ` · ${new Date(alert.due_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "short" })}` : ""}</small>
+        </button>)}
+        {!alerts.length && <p>No hay avisos pendientes.</p>}
+      </div>
+    </div>}
+  </div>;
 }
 
 type PatientTimelineItem =

@@ -99,6 +99,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 - `patient_locations` es la unica relacion vigente paciente-consultorio.
 - Cada evolucion pertenece a su autor mediante `clinical_evolutions.created_by`; el paciente puede tener historias diferenciadas por profesional sin duplicar su identidad.
 - Turnos pertenecen a paciente, profesional y consultorio; sus practicas dinamicas se registran en `appointment_practices`.
+- `professional_secretaries` representa la relacion muchos-a-muchos: una secretaria puede asistir a varios profesionales y un profesional puede trabajar con varias secretarias.
 - Disponibilidades pertenecen a profesional y consultorio.
 - `patients.location_id` permanece solo como dato legado, sin FK.
 
@@ -115,6 +116,8 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 
 - RLS debe estar habilitado en todas las tablas funcionales.
 - Las secretarias acceden a pacientes mediante `patient_locations`.
+- Los pacientes web pendientes solo son visibles y validables por el profesional del turno, sus secretarias asignadas y administracion.
+- Ejecutar `19_professional_secretaries_and_web_workflow.sql` despues de `18_clinical_timeline.sql` en una base existente.
 - Las evoluciones clinicas quedan restringidas a medica/admin.
 - El rol anonimo solo ejecuta los RPC publicos expresamente concedidos.
 - Buckets privados requeridos: `patient-files` y `professional-signatures`.

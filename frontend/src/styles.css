@@ -1414,6 +1414,24 @@ input, select, textarea {
 .patient-card:has(.pending-validation-badge) { border-left: 5px solid #e2ad27; background: #fffdf5; }
 .validate-patient-action { background: #176f78 !important; color: white !important; }
 
+.notification-center { position: relative; display: flex; justify-content: flex-end; margin: 0 12px 10px; }
+.notification-trigger { position: relative; width: 42px; height: 42px; padding: 0; display: grid; place-items: center; background: #24454a; color: #fff; border: 1px solid #3b6065; }
+.notification-trigger > span { position: absolute; top: -7px; right: -7px; min-width: 21px; height: 21px; padding: 0 5px; display: grid; place-items: center; border-radius: 11px; background: #d63c42; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #102e33; }
+.notification-popover { position: absolute; z-index: 80; top: 48px; left: 0; width: min(360px, calc(100vw - 32px)); max-height: 420px; overflow: auto; background: #fff; color: #132d33; border: 1px solid #cbdadd; box-shadow: 0 14px 36px rgba(7,35,40,.22); border-radius: 7px; }
+.notification-popover header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #fff; border-bottom: 1px solid #d9e4e6; }
+.notification-popover header button { width: 30px; height: 30px; padding: 0; }
+.notification-popover > div > button { width: 100%; display: grid; gap: 3px; text-align: left; padding: 12px 14px; background: #fff; border: 0; border-bottom: 1px solid #e4ecee; border-radius: 0; }
+.notification-popover > div > button:hover { background: #eaf7f5; }
+.notification-popover small { color: #587078; font-weight: 500; }
+.notification-popover p { padding: 16px; margin: 0; color: #587078; }
+
+.professional-assignment-fieldset { margin: 14px 0 4px; padding: 12px; border: 1px solid #cbdadd; border-radius: 6px; }
+.professional-assignment-fieldset legend { padding: 0 6px; font-weight: 800; }
+.professional-assignment-fieldset p { margin: 0 0 10px; color: #587078; }
+.professional-assignment-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.professional-assignment-list label { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 10px; border: 1px solid #cbdadd; background: #f5f9f9; border-radius: 5px; cursor: pointer; }
+.professional-assignment-list input { width: 18px; height: 18px; }
+
 .document-preview-backdrop { z-index: 120; padding: 18px; }
 .document-generator {
   width: min(1120px, 100%);

@@ -11,6 +11,8 @@ import {
   resetUserPasswordToDocument,
   deleteUserPermanently,
   enableUserWithoutEmailConfirmation,
+  listProfessionalSecretaryAssignments,
+  setSecretaryProfessionals,
   setProfileActive,
   updateProfile
 } from "../../api/supabase";
@@ -22,7 +24,19 @@ export function UserManager({ users, locations, organizations, currentOrganizati
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"activos" | "inactivos" | "todos">("todos");
+  const [secretaryAssignments, setSecretaryAssignments] = useState<Record<string,string[]>>({});
+  const professionals = users.filter(user => user.active && ["MEDICO", "MEDICA_ADMIN"].includes(user.role));
   const visibleUsers = users.filter(user => statusFilter === "todos" || (statusFilter === "activos" ? user.active : !user.active));
+
+  async function refreshAssignments() {
+    const rows = await listProfessionalSecretaryAssignments().catch(() => []);
+    setSecretaryAssignments(rows.reduce<Record<string,string[]>>((result, row) => {
+      (result[row.secretary_id] ||= []).push(row.professional_id);
+      return result;
+    }, {}));
+  }
+
+  useEffect(() => { void refreshAssignments(); }, [users]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -90,14 +104,14 @@ export function UserManager({ users, locations, organizations, currentOrganizati
         </div>
       </div>
       <div className="list user-list">
-        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} organizations={organizations} canManageAdministrators={canManageAdministrators} onSaved={onSaved} />)}
+        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} organizations={organizations} professionals={professionals} assignedProfessionalIds={secretaryAssignments[user.id] || []} canManageAdministrators={canManageAdministrators} onSaved={async () => { await onSaved(); await refreshAssignments(); }} />)}
         {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
       </div>
     </section>
   );
 }
 
-function UserRow({ user, locations, organizations, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; organizations: OrganizationSummary[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
+function UserRow({ user, locations, organizations, professionals, assignedProfessionalIds, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; organizations: OrganizationSummary[]; professionals: Profile[]; assignedProfessionalIds: string[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Omit<ProfileInput, "id">>({
     email: user.email,
     full_name: user.full_name,
@@ -109,6 +123,7 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
   const [resetStatus, setResetStatus] = useState("");
   const [editing, setEditing] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [professionalIds, setProfessionalIds] = useState<string[]>(assignedProfessionalIds);
 
   useEffect(() => {
     setForm({
@@ -120,6 +135,7 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
       document_number: user.document_number || ""
     });
   }, [user]);
+  useEffect(() => setProfessionalIds(assignedProfessionalIds), [assignedProfessionalIds]);
 
   async function resetPassword() {
     if (!window.confirm(`Blanquear la clave de ${user.full_name} usando su DNI como clave provisoria?`)) return;
@@ -147,6 +163,7 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
     setResetStatus("");
     try {
       await updateProfile(user.id, next);
+      if (next.role === "SECRETARIA") await setSecretaryProfessionals(user.id, professionalIds);
       await onSaved();
       setEditing(false);
     } catch (err) {
@@ -220,6 +237,17 @@ function UserRow({ user, locations, organizations, canManageAdministrators, onSa
           <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
         </select></label>
       </div>
+      {form.role === "SECRETARIA" && <fieldset className="professional-assignment-fieldset">
+        <legend>Profesionales que puede asistir</legend>
+        <p>Puede atender a varios profesionales; cada profesional puede compartir varias secretarias.</p>
+        <div className="professional-assignment-list">
+          {professionals.map(professional => <label key={professional.id}>
+            <input type="checkbox" checked={professionalIds.includes(professional.id)} onChange={event => setProfessionalIds(current => event.target.checked ? [...current, professional.id] : current.filter(id => id !== professional.id))} />
+            <span>{professional.full_name}</span>
+          </label>)}
+          {!professionals.length && <small>No hay profesionales activos para asignar.</small>}
+        </div>
+      </fieldset>}
       <div className="row-actions user-edit-actions">
         <button className="primary" onClick={() => void saveUser()}>Guardar cambios</button>
         <button type="button" onClick={() => { setEditing(false); setResetStatus(""); }}>Cancelar</button>
