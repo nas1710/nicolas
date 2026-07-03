@@ -33,8 +33,9 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
   padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
+  gap: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar::before {
@@ -340,8 +341,12 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 
 .logout-button {
   margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  flex: 0 0 auto;
   color: #ffcfc7 !important;
-  background: rgba(255,255,255,0.05) !important;
+  background: #17363c !important;
   border: 1px solid rgba(255,255,255,0.08);
   text-align: center !important;
   border-radius: 12px;
@@ -1417,13 +1422,18 @@ input, select, textarea {
 .notification-center { position: relative; display: flex; justify-content: flex-end; margin: 0 12px 10px; }
 .notification-trigger { position: relative; width: 42px; height: 42px; padding: 0; display: grid; place-items: center; background: #24454a; color: #fff; border: 1px solid #3b6065; }
 .notification-trigger > span { position: absolute; top: -7px; right: -7px; min-width: 21px; height: 21px; padding: 0 5px; display: grid; place-items: center; border-radius: 11px; background: #d63c42; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #102e33; }
-.notification-popover { position: absolute; z-index: 80; top: 48px; left: 0; width: min(360px, calc(100vw - 32px)); max-height: 420px; overflow: auto; background: #fff; color: #132d33; border: 1px solid #cbdadd; box-shadow: 0 14px 36px rgba(7,35,40,.22); border-radius: 7px; }
+.notification-popover { position: fixed; z-index: 100; top: 72px; right: 24px; left: auto; width: min(390px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 96px)); overflow: auto; background: #fff; color: #132d33; border: 1px solid #b9ced2; box-shadow: 0 18px 48px rgba(7,35,40,.3); border-radius: 7px; }
 .notification-popover header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #fff; border-bottom: 1px solid #d9e4e6; }
 .notification-popover header button { width: 30px; height: 30px; padding: 0; }
 .notification-popover > div > button { width: 100%; display: grid; gap: 3px; text-align: left; padding: 12px 14px; background: #fff; border: 0; border-bottom: 1px solid #e4ecee; border-radius: 0; }
 .notification-popover > div > button:hover { background: #eaf7f5; }
 .notification-popover small { color: #587078; font-weight: 500; }
 .notification-popover p { padding: 16px; margin: 0; color: #587078; }
+
+@media (max-width: 820px) {
+  .sidebar > .notification-center { position: fixed; top: 10px; right: 10px; z-index: 45; margin: 0; }
+  .notification-popover { top: 62px; right: 10px; width: calc(100vw - 20px); max-height: calc(100vh - 144px); }
+}
 
 .professional-assignment-fieldset { margin: 14px 0 4px; padding: 12px; border: 1px solid #cbdadd; border-radius: 6px; }
 .professional-assignment-fieldset legend { padding: 0 6px; font-weight: 800; }
@@ -3021,14 +3031,22 @@ th { background: #edf3f5; color: #43545c; font-size: 12px; text-transform: upper
   display: grid;
   gap: 3px;
   margin-bottom: 13px;
-  padding: 11px;
+  padding: 14px;
   border-left: 4px solid #f0bd43;
   background: #fff5d9;
 }
 
-.selected-public-slot span {
+.selected-public-slot .selected-doctor-label {
   color: #655834;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.selected-public-slot h3 {
+  margin: 0 0 3px;
+  color: #102a30;
+  font-size: 21px;
 }
 
 .selected-public-slot small {

@@ -192,7 +192,7 @@ export function PublicBookingPage() {
               <label className="booking-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={patient.website} onChange={event => setPatient({ ...patient, website: event.target.value })} /></label>
             </div></fieldset>
             {error && <p className="error public-booking-error">{error}</p>}
-            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Reservando..." : "Reservar turno"}</button>
+            <button className="primary public-submit" disabled={!selectedSlot || saving}>{saving ? "Reservando..." : selectedSlot ? `Reservar con ${selectedSlot.doctor_name}` : "Reservar turno"}</button>
             <small className="privacy-copy">Al reservar, el horario queda asignado. El consultorio podrá solicitar una confirmación de asistencia más adelante.</small>
           </section>
         </form>
@@ -207,11 +207,11 @@ function SectionTitle({ number, title, subtitle }: { number: string; title: stri
 
 function SlotButton({ slot, selected, onSelect }: { slot: PublicBookingSearchSlot; selected: boolean; onSelect: (slot: PublicBookingSearchSlot) => void }) {
   const value = new Date(slot.starts_at);
-  return <button type="button" className={selected ? "public-slot selected" : "public-slot"} onClick={() => onSelect(slot)}><strong>{value.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</strong><span>{slot.doctor_name}</span><small>{slot.location_name}</small></button>;
+  return <button type="button" className={selected ? "public-slot selected" : "public-slot"} onClick={() => onSelect(slot)}><strong>{value.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</strong><span>Con {slot.doctor_name}</span><small>{slot.location_name}</small></button>;
 }
 
 function SelectedSlot({ slot }: { slot: PublicBookingSearchSlot }) {
-  return <div className="selected-public-slot"><strong>{formatLongDate(buenosAiresDate(slot.starts_at))} · {new Date(slot.starts_at).toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</strong><span>{slot.doctor_name}</span><small>{slot.location_name}{slot.location_address ? ` · ${slot.location_address}` : ""}</small></div>;
+  return <div className="selected-public-slot"><span className="selected-doctor-label">Profesional elegido</span><h3>{slot.doctor_name}</h3><strong>{formatLongDate(buenosAiresDate(slot.starts_at))} · {new Date(slot.starts_at).toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</strong><small>{slot.location_name}{slot.location_address ? ` · ${slot.location_address}` : ""}</small></div>;
 }
 
 function BookingConfirmation({ result, organization }: { result: PublicBookingResult; organization: OrganizationSettings | null }) {
