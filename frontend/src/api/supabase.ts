@@ -688,7 +688,7 @@ export async function getPatient(id: string) {
       insurance_plans(*),
       patient_locations(location_id, locations:locations!patient_locations_location_id_fkey(*)),
       administrative_notes(*),
-      clinical_evolutions(*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,public_booking_specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)),
+      clinical_evolutions(*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)),
       communications(*),
       attachments(*),
       appointments(*, locations(*)),
@@ -778,7 +778,7 @@ export async function createClinicalEvolution(input: ClinicalEvolutionInput) {
       next_visit_at: toIsoDateTime(input.next_visit_at),
       created_by: sessionData.session?.user.id
     })
-    .select("*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,public_booking_specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)")
+    .select("*, author:profiles!clinical_evolutions_created_by_fkey(id,full_name,specialty,professional_license,signature_name,signature_path,institution_name,institutional_footer)")
     .single();
 
   throwIfError(error);
