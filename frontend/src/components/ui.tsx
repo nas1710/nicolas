@@ -21,6 +21,7 @@ export function Modal({ children, onClose }: { children: ReactNode; onClose: () 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <div className="modal-panel" role="dialog" aria-modal="true" onMouseDown={event => event.stopPropagation()}>
+        <button className="modal-close" type="button" aria-label="Cerrar" title="Cerrar" onClick={onClose}>×</button>
         {children}
       </div>
     </div>

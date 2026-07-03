@@ -935,8 +935,8 @@ function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient;
 
   return (
     <article className={`patient-card ${patient.status === "baja" ? "is-inactive" : ""}`}>
-      <div className="patient-card-main">
-        <button className="patient-identity" onClick={onOpen}>
+      <div className="patient-card-main" role="button" tabIndex={0} onClick={onOpen} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}>
+        <button className="patient-identity" onClick={event => { event.stopPropagation(); onOpen(); }}>
           <span className="avatar">{patient.last_name?.[0] || "P"}{patient.first_name?.[0] || ""}</span>
           <span>
             <strong>{patient.last_name}, {patient.first_name} {patient.status === "baja" && <em className="inactive-patient-badge">Dado de baja</em>} {patient.validation_status === "PENDIENTE" && <em className="pending-validation-badge">Pendiente de validacion</em>}</strong>
@@ -1186,11 +1186,23 @@ function AppointmentForm({
   }, []);
 
   const activeLocations = (config?.locations || []).filter(location => location.active && (canAccessClinical(profile) || location.id === profile.location_id));
+  const eligibleAvailability = getEligibleAvailability(profile, config?.availability || []).filter(slot => slot.enabled);
   const selectedLocation = activeLocations.find(location => location.id === selectedLocationId) || null;
-  const availableSlots = getEligibleAvailability(profile, config?.availability || []).filter(slot => slot.location_id === selectedLocationId);
+  const availableSlots = eligibleAvailability.filter(slot => slot.location_id === selectedLocationId);
   const matchingAvailability = findAvailabilityForAppointment(form.starts_at, form.duration_min, availableSlots);
   const availabilityMessage = getAvailabilityMessage(form.starts_at, form.duration_min, availableSlots);
-  const visualSlots = selectedLocationId ? buildLocationDaySlots(selectedDate, selectedLocationId, availableSlots, appointments) : [];
+  const selectedWeekday = new Date(`${selectedDate}T12:00:00`).getDay();
+  const dayAvailability = eligibleAvailability.filter(slot => slot.weekday === selectedWeekday);
+  const dayLocationIds = Array.from(new Set(dayAvailability.map(slot => slot.location_id)));
+  const visualSlots = dayLocationIds
+    .flatMap(locationId => buildLocationDaySlots(selectedDate, locationId, dayAvailability.filter(slot => slot.location_id === locationId), appointments))
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const upcomingAttentionDays = Array.from({ length: 61 }, (_, offset) => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + offset);
+    return date;
+  }).filter(date => eligibleAvailability.some(slot => slot.weekday === date.getDay())).slice(0, 12);
   const activePatients = patients.filter(patient => patient.status !== "baja");
   const normalizedPatientSearch = patientSearch.trim().toLocaleLowerCase("es");
   const filteredPatients = normalizedPatientSearch
@@ -1201,7 +1213,7 @@ function AppointmentForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedLocationId) return setError("Elegir consultorio.");
+    if (!selectedLocationId) return setError("Elegi un horario libre; el consultorio se asigna automaticamente.");
     if (!form.starts_at) return setError("Fecha y hora son obligatorias.");
     if (matchingAvailability.status === "none") return setError("Ese dia y horario no coinciden con ningun consultorio configurado.");
     if (matchingAvailability.status === "ambiguous") return setError("Hay mas de un consultorio configurado en ese mismo horario. Revisar Ajustes > Disponibilidad medica.");
@@ -1240,8 +1252,10 @@ function AppointmentForm({
     }, 0);
   }
 
-  function chooseFreeSlot(startsAt: string, jumpToPatient = false) {
-    setForm({ ...form, starts_at: startsAt, location_id: selectedLocationId });
+  function chooseFreeSlot(slot: AgendaSlot, jumpToPatient = false) {
+    setSelectedLocationId(slot.locationId);
+    setForm({ ...form, starts_at: slot.startsAt, location_id: slot.locationId });
+    setNewPatient(current => ({ ...current, location_id: slot.locationId }));
     if (jumpToPatient) focusPatientSection();
   }
 
@@ -1250,24 +1264,25 @@ function AppointmentForm({
       <div className="appointment-form-heading">
         <div><span>Nuevo turno</span><h2>Completa los datos en 3 pasos</h2></div>
         <ol aria-label="Progreso del turno">
-          <li className={selectedLocationId ? "done" : "active"}>Agenda</li>
+          <li className={form.starts_at ? "done" : "active"}>Fecha</li>
           <li className={form.starts_at ? "done" : selectedLocationId ? "active" : ""}>Horario</li>
           <li className={appointmentReady ? "done" : form.starts_at ? "active" : ""}>Paciente</li>
         </ol>
       </div>
-      <h3 className="appointment-step-title"><span>1</span> Agenda y motivo</h3>
+      <h3 className="appointment-step-title"><span>1</span> Motivo y fecha</h3>
       <div className="segmented">
         <button type="button" className={patientMode === "existente" ? "active" : ""} onClick={() => setPatientMode("existente")}>Paciente existente</button>
         <button type="button" className={patientMode === "nuevo" ? "active" : ""} onClick={() => setPatientMode("nuevo")}>Paciente nuevo</button>
       </div>
-      <div className="form-grid">
-        {!initial ? <label>Agenda / consultorio
-          <select value={selectedLocationId} onChange={e => { setSelectedLocationId(e.target.value); setForm({ ...form, starts_at: "", location_id: e.target.value }); setNewPatient({ ...newPatient, location_id: e.target.value }); }} disabled={profile.role === "SECRETARIA"}>
-            <option value="">Elegir agenda</option>
-            {activeLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-          </select>
-        </label> : <div className="locked-agenda"><span>Agenda</span><strong>{selectedLocation?.name || "Consultorio asignado"}</strong></div>}
-        <label>Fecha<input type="date" value={selectedDate} onChange={e => { setSelectedDate(e.target.value); setForm({ ...form, starts_at: "" }); }} /></label>
+      <div className="form-grid appointment-core-fields">
+        {initial && <div className="locked-agenda"><span>Consultorio asignado por el horario</span><strong>{selectedLocation?.name || "Consultorio"}</strong></div>}
+        <label>Fecha<input type="date" value={selectedDate} min={toDateInputValue(new Date())} onChange={e => { setSelectedDate(e.target.value); setSelectedLocationId(""); setForm({ ...form, starts_at: "", location_id: "" }); }} /></label>
+        {!initial && <div className="appointment-date-strip full-field" aria-label="Proximos dias con atencion">
+          {upcomingAttentionDays.map(date => {
+            const value = toDateInputValue(date);
+            return <button type="button" key={value} className={selectedDate === value ? "active" : ""} onClick={() => { setSelectedDate(value); setSelectedLocationId(""); setForm({ ...form, starts_at: "", location_id: "" }); }}><span>{weekdayName(date.getDay())}</span><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}</strong></button>;
+          })}
+        </div>}
         <AppointmentTypePicker value={form.types} onChange={types => setForm({ ...form, types })} />
         <label>Duracion
           <select value={form.duration_min} onChange={e => setForm({ ...form, duration_min: Number(e.target.value) })}>
@@ -1283,19 +1298,18 @@ function AppointmentForm({
           <span>{form.starts_at ? `Seleccionado ${new Date(form.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Click libre selecciona · doble click avanza · ocupado edita"}</span>
         </div>
         <div className="slot-picker-grid">
-          {!selectedLocationId && <p className="empty-day">Elegir consultorio para ver horarios.</p>}
-          {selectedLocationId && visualSlots.length === 0 && <p className="empty-day">No hay atencion configurada para ese dia.</p>}
+          {visualSlots.length === 0 && <p className="empty-day">No hay atencion configurada para ese dia. Elegi otra fecha.</p>}
           {visualSlots.map(slot => (
             <button
               key={slot.key}
               type="button"
               className={slot.appointment ? "pick-slot occupied" : form.starts_at === slot.startsAt ? "pick-slot selected" : "pick-slot free"}
-              onClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot.startsAt)}
-              onDoubleClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot.startsAt, true)}
-              title={slot.appointment ? "Doble click para editar este turno" : "Doble click para elegir paciente"}
+              onClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot, true)}
+              title={slot.appointment ? "Editar este turno" : `Elegir ${slot.time} en ${slot.locationName}`}
             >
               <strong>{slot.time}</strong>
               <span>{slot.appointment ? `${slot.appointment.patients?.last_name || ""}, ${slot.appointment.patients?.first_name || ""}` : "Libre"}</span>
+              <small>{slot.locationName}</small>
             </button>
           ))}
         </div>
@@ -1622,6 +1636,8 @@ function buildLocationDaySlots(selectedDate: string, locationId: string, availab
           key: `${slot.id}-${minute}`,
           time: `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`,
           startsAt: toDatetimeLocal(date),
+          locationId: slot.location_id,
+          locationName: slot.locations?.name || "Consultorio",
           durationMin: interval,
           appointment
         });
@@ -2441,7 +2457,7 @@ function Settings({ profile }: { profile: Profile }) {
   const [professionals, setProfessionals] = useState<Profile[]>([]);
   type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
-  const hasOwnProfessionalProfile = isDoctorRole(profile.role) && !profile.simulated;
+  const hasOwnProfessionalProfile = !profile.is_master && isDoctorRole(profile.role) && !profile.simulated;
   const modules: Array<{ id: SettingsModule; label: string; hint: string; icon: React.ElementType }> = [
     ...(isOrganizationAdmin ? [
       { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes", icon: Building2 },

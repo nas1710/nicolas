@@ -146,6 +146,10 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 
 ## Variables y secretos
 
+Migracion posterior al consolidado:
+
+- `22_exclude_master_from_public_booking.sql`: evita publicar al usuario Maestro/Administrador como profesional de la turnera.
+
 Frontend:
 
 - `VITE_SUPABASE_URL`

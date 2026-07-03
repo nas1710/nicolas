@@ -39,6 +39,7 @@ export function PublicBookingPage() {
   const [horizon, setHorizon] = useState<30 | 60>(30);
   const [searchSlots, setSearchSlots] = useState<PublicBookingSearchSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<PublicBookingSearchSlot | null>(null);
+  const [showMobileTimes, setShowMobileTimes] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,7 +66,6 @@ export function PublicBookingPage() {
   }, [searchSlots]);
   const daySlots = searchSlots.filter(slot => buenosAiresDate(slot.starts_at) === date);
   const locationOptions = uniqueOptions(searchSlots.map(slot => ({ id: slot.location_id, label: slot.location_name })));
-  const nextAvailableDays = availableDates.filter(item => item.date >= today).slice(0, 8);
 
   useEffect(() => {
     Promise.all([
@@ -176,15 +176,13 @@ export function PublicBookingPage() {
               {locationOptions.length > 1 && <div className="public-booking-filters">
                 {locationOptions.length > 1 && <div><strong>Centro</strong><div className="filter-chips"><button type="button" className={!locationId ? "active" : ""} onClick={() => setLocationId("")}>Todos</button>{locationOptions.map(item => <button type="button" key={item.id} className={locationId === item.id ? "active" : ""} onClick={() => setLocationId(item.id)}>{item.label}</button>)}</div></div>}
               </div>}
-              {nextAvailableDays.length > 0 && <div className="availability-day-strip" aria-label="Próximas fechas disponibles">
-                {nextAvailableDays.map(item => <button type="button" key={item.date} className={date === item.date ? "active" : ""} onClick={() => { setDate(item.date); setCalendarMonth(item.date.slice(0, 7)); }}><span>{new Date(`${item.date}T12:00:00`).toLocaleDateString("es-AR", { weekday: "short" })}</span><strong>{new Date(`${item.date}T12:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}</strong><small>{item.available_count} {item.available_count === 1 ? "turno" : "turnos"}</small></button>)}
-              </div>}
               <div className="public-date-time-picker">
-                <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={addDays(today, horizon)} onMonthChange={setCalendarMonth} onSelect={setDate} />
-                <div className="public-times-panel">
+                <PublicBookingCalendar month={calendarMonth} selectedDate={date} availableDates={availableDates} minDate={today} maxDate={addDays(today, horizon)} onMonthChange={setCalendarMonth} onSelect={value => { setDate(value); setShowMobileTimes(true); }} />
+                <div className={`public-times-panel ${showMobileTimes ? "mobile-open" : ""}`}>
+                  <button type="button" className="public-times-close" aria-label="Cerrar horarios" title="Cerrar" onClick={() => setShowMobileTimes(false)}>×</button>
                   <strong>{formatLongDate(date)}</strong>
                   {loadingSlots && <p className="empty-day">Buscando los próximos turnos...</p>}
-                  {!loadingSlots && <div className="public-slot-grid">{daySlots.map(slot => <SlotButton key={`${slot.starts_at}-${slot.doctor_id}-${slot.location_id}`} slot={slot} selected={selectedSlot?.starts_at === slot.starts_at && selectedSlot.doctor_id === slot.doctor_id} onSelect={setSelectedSlot} />)}</div>}
+                  {!loadingSlots && <div className="public-slot-grid">{daySlots.map(slot => <SlotButton key={`${slot.starts_at}-${slot.doctor_id}-${slot.location_id}`} slot={slot} selected={selectedSlot?.starts_at === slot.starts_at && selectedSlot.doctor_id === slot.doctor_id} onSelect={value => { setSelectedSlot(value); setShowMobileTimes(false); window.setTimeout(() => document.getElementById("public-patient-data")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }} />)}</div>}
                   {!loadingSlots && daySlots.length === 0 && <p className="empty-day">No hay horarios libres ese día. Elegí una fecha resaltada.</p>}
                 </div>
               </div>
@@ -192,7 +190,7 @@ export function PublicBookingPage() {
             </>}
           </section>
 
-          <section className={`public-patient-form ${selectedSlot ? "ready" : ""}`}>
+          <section id="public-patient-data" className={`public-patient-form ${selectedSlot ? "ready" : ""}`}>
             <SectionTitle number="3" title="Tus datos" subtitle="Completalos después de elegir el turno." />
             {selectedSlot ? <SelectedSlot slot={selectedSlot} /> : <p className="patient-form-locked">Primero elegí una práctica, una fecha y un horario.</p>}
             <fieldset disabled={!selectedSlot} className="patient-data-fieldset"><div className="public-patient-grid">
