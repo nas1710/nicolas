@@ -217,4 +217,9 @@ drop trigger if exists mark_public_appointment_confirmed on public.appointments;
 create trigger mark_public_appointment_confirmed
 before insert on public.appointments for each row execute function public.mark_public_appointment_confirmed();
 
+-- Normaliza solicitudes web existentes: el horario ya estaba bloqueado y reservado.
+update public.appointments
+set status='CONFIRMADO', updated_at=now()
+where source='WEB' and status::text='PENDIENTE';
+
 notify pgrst,'reload schema';
