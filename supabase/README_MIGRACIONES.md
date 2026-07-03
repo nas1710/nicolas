@@ -119,6 +119,7 @@ npx --yes supabase@latest secrets set "CORS_ORIGIN=https://cardioayala.vercel.ap
 - Los pacientes web pendientes solo son visibles y validables por el profesional del turno, sus secretarias asignadas y administracion.
 - Ejecutar `19_professional_secretaries_and_web_workflow.sql` despues de `18_clinical_timeline.sql` en una base existente.
 - Ejecutar `20_professional_profile_permissions.sql` a continuacion para separar perfil medico y permisos administrativos.
+- Ejecutar `21_automatic_appointment_reminders.sql` para crear la cola idempotente de recordatorios.
 - Las evoluciones clinicas quedan restringidas a medica/admin.
 - El rol anonimo solo ejecuta los RPC publicos expresamente concedidos.
 - Buckets privados requeridos: `patient-files` y `professional-signatures`.
