@@ -307,7 +307,7 @@ function App() {
         {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={operationalProfile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
         {view === "estudios" && operationalProfile.role !== "SECRETARIA" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={openPatientHistory} />}
         {view === "tareas" && !lightAppPath && <Tasks key={`tareas-${viewResetKey}`} />}
-        {view === "ajustes" && canManageConfiguration(operationalProfile) && <Settings key={`ajustes-${viewResetKey}`} profile={operationalProfile} />}
+        {view === "ajustes" && canManageConfiguration(operationalProfile) && <Settings key={`ajustes-${viewResetKey}`} profile={operationalProfile} lightMode={lightAppPath} />}
         {view === "usuarios" && canManageUsers(operationalProfile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
         {view === "organizaciones" && operationalProfile.is_master && <Page title="Clientes" subtitle="Organizaciones, planes y onboarding"><OrganizationOnboardingManager /></Page>}
       </main>
@@ -2478,25 +2478,26 @@ function Tasks() {
   return <Page title="Tareas" subtitle="Pendientes de informe, envio y adjuntos"><p>Vista operativa para pendientes.</p></Page>;
 }
 
-function Settings({ profile }: { profile: Profile }) {
+function Settings({ profile, lightMode = false }: { profile: Profile; lightMode?: boolean }) {
   const [data, setData] = useState<{ insurancePlans: InsurancePlan[]; locations: Location[]; availability: MedicalAvailability[]; holidays: Holiday[] } | null>(null);
   const [professionals, setProfessionals] = useState<Profile[]>([]);
   type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
+  const canManageLocations = isOrganizationAdmin || (lightMode && profile.role === "MEDICA_ADMIN");
   const hasOwnProfessionalProfile = !profile.is_master && isDoctorRole(profile.role) && !profile.simulated;
   const modules: Array<{ id: SettingsModule; label: string; hint: string; icon: React.ElementType }> = [
     ...(isOrganizationAdmin ? [
       { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes", icon: Building2 },
       { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas", icon: Stethoscope },
-      { id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion", icon: MapPin },
       { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes", icon: Megaphone },
       { id: "auditoria" as const, label: "Auditoria", hint: "Ingresos y actividad", icon: ShieldCheck }
     ] : []),
+    ...(canManageLocations ? [{ id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion", icon: MapPin }] : []),
     { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables", icon: CalendarDays },
     { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles", icon: ClipboardList },
     ...(hasOwnProfessionalProfile ? [{ id: "documentos" as const, label: "Mi perfil profesional", hint: "Matricula, firma y documentos", icon: FileSignature }] : [])
   ];
-  const [module, setModule] = useState<SettingsModule>(isOrganizationAdmin ? "organizacion" : "agenda");
+  const [module, setModule] = useState<SettingsModule>(lightMode && canManageLocations ? "consultorios" : isOrganizationAdmin ? "organizacion" : "agenda");
 
   async function refresh() {
     const [config, profileItems] = await Promise.all([
@@ -2519,7 +2520,7 @@ function Settings({ profile }: { profile: Profile }) {
           <div className="settings-module-content">
             {module === "organizacion" && isOrganizationAdmin && <OrganizationSettingsManager />}
             {module === "catalogo" && isOrganizationAdmin && <CommercialCatalogManager />}
-            {module === "consultorios" && <LocationManager locations={data.locations} canEdit={isOrganizationAdmin} onSaved={refresh} />}
+            {module === "consultorios" && <LocationManager locations={data.locations} organizationId={profile.organization_id} canEdit={canManageLocations} onSaved={refresh} />}
             {module === "comunicaciones" && isOrganizationAdmin && <CommunicationTemplateManager />}
             {module === "coberturas" && <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />}
             {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} professionals={professionals} currentProfile={profile} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
@@ -2636,7 +2637,7 @@ function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
   </section>;
 }
 
-function LocationManager({ locations, canEdit, onSaved }: { locations: Location[]; canEdit: boolean; onSaved: () => Promise<void> }) {
+function LocationManager({ locations, organizationId, canEdit, onSaved }: { locations: Location[]; organizationId?: string | null; canEdit: boolean; onSaved: () => Promise<void> }) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
@@ -2645,16 +2646,20 @@ function LocationManager({ locations, canEdit, onSaved }: { locations: Location[
     event.preventDefault();
     if (!name.trim()) return setError("Nombre de consultorio obligatorio.");
     setError("");
-    await createLocation({ name, address, active: true });
-    setName("");
-    setAddress("");
-    await onSaved();
+    try {
+      await createLocation({ name, address, active: true }, organizationId);
+      setName("");
+      setAddress("");
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo agregar el consultorio.");
+    }
   }
 
   return (
     <section className="panel admin-section">
       <h2>Consultorios</h2>
-      {!canEdit && <p className="notice">Solo el usuario maestro puede crear, editar o eliminar consultorios.</p>}
+      {!canEdit && <p className="notice">Tu usuario puede consultar los consultorios, pero no modificarlos.</p>}
       {canEdit && (
         <form className="mini-form" onSubmit={submit}>
           <input placeholder="Nombre del consultorio" value={name} onChange={e => setName(e.target.value)} />

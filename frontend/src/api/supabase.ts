@@ -1252,13 +1252,14 @@ export async function getConfiguration() {
   };
 }
 
-export async function createLocation(input: LocationInput) {
+export async function createLocation(input: LocationInput, organizationId?: string | null) {
   const { data, error } = await supabase
     .from("locations")
     .insert({
       name: input.name.trim(),
       address: input.address?.trim() || null,
-      active: input.active ?? true
+      active: input.active ?? true,
+      ...(organizationId ? { organization_id: organizationId } : {})
     })
     .select("*")
     .single();
