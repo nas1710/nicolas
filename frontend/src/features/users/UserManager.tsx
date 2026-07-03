@@ -17,7 +17,7 @@ import {
   updateProfile
 } from "../../api/supabase";
 
-export function UserManager({ users, locations, organizations, currentOrganizationId, canManageAdministrators, onSaved }: { users: Profile[]; locations: Location[]; organizations: OrganizationSummary[]; currentOrganizationId?: string | null; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
+export function UserManager({ users, locations, organizations, currentOrganizationId, canManageAdministrators, secretaryOnly = false, onSaved }: { users: Profile[]; locations: Location[]; organizations: OrganizationSummary[]; currentOrganizationId?: string | null; canManageAdministrators: boolean; secretaryOnly?: boolean; onSaved: () => Promise<void> }) {
   const defaultOrganizationId = currentOrganizationId || organizations[0]?.id || "";
   const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "SECRETARIA" as ProfileInput["role"], location_id: "", document_number: "", organization_id: defaultOrganizationId });
   const [error, setError] = useState("");
@@ -74,7 +74,7 @@ export function UserManager({ users, locations, organizations, currentOrganizati
             <label>Rol
               <select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
                 <option value="SECRETARIA">Secretaria</option>
-                <option value="MEDICO">Medico</option>
+                {!secretaryOnly && <option value="MEDICO">Medico</option>}
                 {canManageAdministrators && <option value="ADMINISTRADOR">Administrador</option>}
               </select>
             </label>
@@ -104,14 +104,14 @@ export function UserManager({ users, locations, organizations, currentOrganizati
         </div>
       </div>
       <div className="list user-list">
-        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} organizations={organizations} professionals={professionals} assignedProfessionalIds={secretaryAssignments[user.id] || []} canManageAdministrators={canManageAdministrators} onSaved={async () => { await onSaved(); await refreshAssignments(); }} />)}
+        {visibleUsers.map(user => <UserRow key={user.id} user={user} locations={locations} organizations={organizations} professionals={professionals} assignedProfessionalIds={secretaryAssignments[user.id] || []} canManageAdministrators={canManageAdministrators} secretaryOnly={secretaryOnly} onSaved={async () => { await onSaved(); await refreshAssignments(); }} />)}
         {visibleUsers.length === 0 && <p className="empty-day">No hay usuarios en esta vista.</p>}
       </div>
     </section>
   );
 }
 
-function UserRow({ user, locations, organizations, professionals, assignedProfessionalIds, canManageAdministrators, onSaved }: { user: Profile; locations: Location[]; organizations: OrganizationSummary[]; professionals: Profile[]; assignedProfessionalIds: string[]; canManageAdministrators: boolean; onSaved: () => Promise<void> }) {
+function UserRow({ user, locations, organizations, professionals, assignedProfessionalIds, canManageAdministrators, secretaryOnly, onSaved }: { user: Profile; locations: Location[]; organizations: OrganizationSummary[]; professionals: Profile[]; assignedProfessionalIds: string[]; canManageAdministrators: boolean; secretaryOnly: boolean; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Omit<ProfileInput, "id">>({
     email: user.email,
     full_name: user.full_name,
@@ -231,7 +231,7 @@ function UserRow({ user, locations, organizations, professionals, assignedProfes
         <label>Email<input value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></label>
         <label>DNI<input value={formatDocumentNumber("DNI", form.document_number, "")} onChange={event => setForm({ ...form, document_number: normalizeDocumentNumber("DNI", event.target.value) })} inputMode="numeric" /></label>
         <label>Rol<select value={form.role} onChange={event => setForm({ ...form, role: event.target.value as ProfileInput["role"], location_id: event.target.value === "SECRETARIA" ? form.location_id : "" })}>
-          <option value="SECRETARIA">Secretaria</option><option value="MEDICO">Medico</option>{canManageAdministrators && <option value="ADMINISTRADOR">Administrador</option>}
+          <option value="SECRETARIA">Secretaria</option>{!secretaryOnly && <option value="MEDICO">Medico</option>}{canManageAdministrators && <option value="ADMINISTRADOR">Administrador</option>}
         </select></label>
         <label>Consultorio<select value={form.location_id || ""} onChange={event => setForm({ ...form, location_id: event.target.value })} disabled={form.role !== "SECRETARIA"}>
           <option value="">Todos</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}

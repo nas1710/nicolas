@@ -68,7 +68,8 @@ Deno.serve(async request => {
       .select("id, role, active, is_master, organization_id")
       .eq("id", authData.user.id)
       .single();
-    const requesterCanManage = requester?.is_master || requester?.role === "ADMINISTRADOR";
+    const requesterIsLightOwner = requester?.role === "MEDICA_ADMIN";
+    const requesterCanManage = requester?.is_master || requester?.role === "ADMINISTRADOR" || requesterIsLightOwner;
     if (requesterError || !requester?.active || !requesterCanManage) {
       throw new Error("No tenes permisos para administrar accesos.");
     }
@@ -98,7 +99,8 @@ Deno.serve(async request => {
         .select("*, location:locations!profiles_location_id_fkey(*)")
         .eq("is_master", false)
         .order("full_name");
-      if (!requester.is_master) query = query.eq("organization_id", requester.organization_id).not("role", "in", "(ADMINISTRADOR,MEDICA_ADMIN)");
+      if (requesterIsLightOwner) query = query.eq("organization_id", requester.organization_id).eq("role", "SECRETARIA");
+      else if (!requester.is_master) query = query.eq("organization_id", requester.organization_id).not("role", "in", "(ADMINISTRADOR,MEDICA_ADMIN)");
       const { data: profiles, error } = await query;
       if (error) throw error;
       return json({ profiles: profiles || [] }, corsHeaders);
@@ -109,6 +111,9 @@ Deno.serve(async request => {
       const password = String(body.password || "");
       const fullName = text(body.full_name);
       const role = managedRole(body.role);
+      if (requesterIsLightOwner && role !== "SECRETARIA") {
+        throw new Error("El medico propietario solo puede crear accesos de Secretaria.");
+      }
       if (!requester.is_master && (role === "ADMINISTRADOR" || role === "MEDICA_ADMIN")) {
         throw new Error("Solo el usuario Maestro puede crear administradores.");
       }
@@ -197,6 +202,7 @@ Deno.serve(async request => {
     if (targetError || !target) throw new Error("Usuario no encontrado.");
     if (target.is_master) throw new Error("El usuario Maestro esta protegido.");
     if (!requester.is_master && target.organization_id !== requester.organization_id) throw new Error("El usuario pertenece a otra organizacion.");
+    if (requesterIsLightOwner && target.role !== "SECRETARIA") throw new Error("El medico propietario solo puede administrar secretarias.");
     if (!requester.is_master && (target.role === "ADMINISTRADOR" || target.role === "MEDICA_ADMIN")) {
       throw new Error("Solo el usuario Maestro puede administrar a otro administrador.");
     }
@@ -296,6 +302,9 @@ Deno.serve(async request => {
       const email = text(body.email).toLowerCase();
       const fullName = text(body.full_name);
       const role = managedRole(body.role);
+      if (requesterIsLightOwner && role !== "SECRETARIA") {
+        throw new Error("El medico propietario solo puede asignar el rol Secretaria.");
+      }
       if (!requester.is_master && (role === "ADMINISTRADOR" || role === "MEDICA_ADMIN")) {
         throw new Error("Solo el usuario Maestro puede asignar el rol Administrador.");
       }

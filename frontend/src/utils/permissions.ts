@@ -5,7 +5,7 @@ export const isAdministratorRole = (role: Role) => role === "ADMINISTRADOR";
 export const isDoctorRole = (role: Role) => role === "MEDICO" || role === "MEDICA_ADMIN";
 export const canAccessClinical = (profile: Pick<Profile, "role" | "is_master">) => profile.is_master || isAdministratorRole(profile.role) || isDoctorRole(profile.role);
 export const canManageConfiguration = (profile: Pick<Profile, "role" | "is_master">) => profile.is_master || isAdministratorRole(profile.role) || isDoctorRole(profile.role);
-export const canManageUsers = (profile: Pick<Profile, "role" | "is_master">) => profile.is_master || isAdministratorRole(profile.role);
+export const canManageUsers = (profile: Pick<Profile, "role" | "is_master">) => profile.is_master || isAdministratorRole(profile.role) || profile.role === "MEDICA_ADMIN";
 
 export function roleLabel(profile: Pick<Profile, "role" | "is_master" | "location">) {
   if (profile.is_master) return "Maestro";

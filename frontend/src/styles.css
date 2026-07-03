@@ -4190,3 +4190,20 @@ body .public-calendar-grid button.selected { border-color: var(--selection); bac
 body .public-slot { border-color: #78b9aa; background: #eef9f5; color: #145d48; }
 body .public-slot:hover,
 body .public-slot.selected { border-color: var(--action); background: var(--action); color: white; box-shadow: 0 6px 14px rgba(8,118,111,.22); }
+
+.light-shell .sidebar::after {
+  content: "LIGHT";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #dff4ee;
+  color: #075b4c;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.light-shell .nav-group { border-color: rgba(143, 205, 196, .2); }

@@ -128,6 +128,7 @@ function App() {
   const routePath = window.location.pathname.replace(/\/+$/, "") || "/";
   const publicBookingPath = routePath === "/turnos";
   const internalAppPath = routePath === "/app";
+  const lightAppPath = routePath === "/light";
   const authCallback = window.location.hash.includes("type=recovery") || window.location.hash.includes("error=");
   const publicHomePath = routePath === "/" && !authCallback;
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -177,7 +178,7 @@ function App() {
 
   useEffect(() => {
     if (!profile) return;
-    if (!internalAppPath) window.history.replaceState(null, "", `/app${window.location.search}`);
+    if (!internalAppPath && !lightAppPath) window.history.replaceState(null, "", `/app${window.location.search}`);
     setView("inicio");
     setSelectedPatientId(null);
     setNewAppointmentKey(0);
@@ -191,14 +192,14 @@ function App() {
       getConfiguration().then(configuration => setSimulationLocations(configuration.locations.filter(location => location.active))).catch(() => setSimulationLocations([]));
       listProfiles().then(users => setSimulationProfessionals(users.filter(user => user.active && isDoctorRole(user.role)))).catch(() => setSimulationProfessionals([]));
     }
-  }, [profile?.id, internalAppPath]);
+  }, [profile?.id, internalAppPath, lightAppPath]);
 
   if (publicHomePath) return <PublicHomePage />;
   if (publicBookingPath) return <PublicBookingPage />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
   if (passwordRecovery) return <PasswordRecovery onDone={nextProfile => { setProfile(nextProfile); setPasswordRecovery(false); }} />;
   if (!profile) return <Login initialError={authLinkError} onLogin={nextProfile => {
-    window.history.replaceState(null, "", `/app${window.location.search}`);
+    window.history.replaceState(null, "", `${lightAppPath ? "/light" : "/app"}${window.location.search}`);
     setProfile(nextProfile);
   }} />;
   if (profile.must_change_password) return <PasswordRecovery forced onDone={nextProfile => setProfile(nextProfile)} />;
@@ -250,7 +251,7 @@ function App() {
   };
 
   return (
-    <div className={menuCollapsed ? "shell menu-collapsed" : "shell"}>
+    <div className={`${menuCollapsed ? "shell menu-collapsed" : "shell"}${lightAppPath ? " light-shell" : ""}`}>
       <aside className="sidebar">
         <button className="brand-row" type="button" onClick={() => setMenuCollapsed(value => !value)} title={menuCollapsed ? "Expandir menu" : "Contraer menu"} aria-label={menuCollapsed ? "Expandir menu" : "Contraer menu"}>
           <span className="brand">SP</span>
@@ -259,7 +260,7 @@ function App() {
             <span>{simulatedRole ? `Vista ${roleLabel(operationalProfile)}` : roleLabel(profile)}</span>
           </div>
         </button>
-        {(profile.is_master || profile.role === "ADMINISTRADOR") && <div className="role-simulator">
+        {!lightAppPath && (profile.is_master || profile.role === "ADMINISTRADOR") && <div className="role-simulator">
           <span>Vista operativa</span>
           <div><button type="button" className={!simulatedRole ? "active" : ""} onClick={() => setSimulatedRole("")}>Admin</button><button type="button" className={simulatedRole === "MEDICO" ? "active" : ""} onClick={() => setSimulatedRole("MEDICO")}>Medico</button><button type="button" className={simulatedRole === "SECRETARIA" ? "active" : ""} onClick={() => setSimulatedRole("SECRETARIA")}>Secretaria</button></div>
           {simulatedRole === "SECRETARIA" && <select aria-label="Consultorio para vista Secretaria" value={simulatedLocationId || simulationLocations[0]?.id || ""} onChange={event => setSimulatedLocationId(event.target.value)}>{simulationLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
@@ -276,14 +277,14 @@ function App() {
           <NavButton active={view === "inicio"} icon={<LayoutDashboard size={18} />} label="Inicio" hint="Resumen" onClick={() => navigate("inicio")} />
           <NavButton active={view === "agenda"} icon={<CalendarDays size={18} />} label="Agenda" hint="Dia y semana" onClick={() => navigate("agenda")} />
           <NavButton active={view === "pacientes"} icon={<UsersRound size={18} />} label="Pacientes" hint="Historia clinica" onClick={() => navigate("pacientes")} />
-          <NavButton active={view === "estudios"} icon={<FileSignature size={18} />} label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />
-          <NavButton active={view === "tareas"} icon={<ClipboardList size={18} />} label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />
+          {operationalProfile.role !== "SECRETARIA" && <NavButton active={view === "estudios"} icon={<FileSignature size={18} />} label="Estudios" hint="Informes y documentos" onClick={() => navigate("estudios")} />}
+          {!lightAppPath && <NavButton active={view === "tareas"} icon={<ClipboardList size={18} />} label="Tareas" hint="Pendientes" onClick={() => navigate("tareas")} />}
         </nav>
         <nav className="nav-group">
           <span>Administracion</span>
           {canManageConfiguration(operationalProfile) && <NavButton active={view === "ajustes"} icon={<Settings2 size={18} />} label="Ajustes" hint="Consultorios y horarios" onClick={() => navigate("ajustes")} />}
           {canManageUsers(operationalProfile) && <NavButton active={view === "usuarios"} icon={<ShieldCheck size={18} />} label="Usuarios" hint="Accesos del sistema" onClick={() => navigate("usuarios")} />}
-          {operationalProfile.is_master && <NavButton active={view === "organizaciones"} icon={<Building2 size={18} />} label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
+          {!lightAppPath && operationalProfile.is_master && <NavButton active={view === "organizaciones"} icon={<Building2 size={18} />} label="Clientes" hint="Organizaciones y planes" onClick={() => navigate("organizaciones")} />}
         </nav>
         <button className="logout-button" aria-label="Cerrar sesion" title="Cerrar sesion" onClick={() => signOut().then(() => { window.history.replaceState(null, "", "/login"); setProfile(null); })}>Cerrar sesion</button>
         <button className="mobile-more-button" type="button" aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen(value => !value)}>
@@ -304,8 +305,8 @@ function App() {
         {view === "reportes" && <OperationalDashboard key={`reportes-${viewResetKey}`} profile={operationalProfile} onBack={() => navigate("inicio")} onAgenda={() => navigate("agenda")} onNewPatient={navigateNewPatient} onOpenPatient={openPatientHistory} />}
         {view === "agenda" && <Agenda key={`agenda-${viewResetKey}`} profile={operationalProfile} openNewKey={newAppointmentKey} onOpenPatient={openPatientHistory} />}
         {view === "pacientes" && <Patients key={`pacientes-${viewResetKey}`} profile={operationalProfile} selectedId={selectedPatientId} openNewKey={newPatientKey} onSelect={setSelectedPatientId} onClose={() => setSelectedPatientId(null)} />}
-        {view === "estudios" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={openPatientHistory} />}
-        {view === "tareas" && <Tasks key={`tareas-${viewResetKey}`} />}
+        {view === "estudios" && operationalProfile.role !== "SECRETARIA" && <Studies key={`estudios-${viewResetKey}`} onOpenPatient={openPatientHistory} />}
+        {view === "tareas" && !lightAppPath && <Tasks key={`tareas-${viewResetKey}`} />}
         {view === "ajustes" && canManageConfiguration(operationalProfile) && <Settings key={`ajustes-${viewResetKey}`} profile={operationalProfile} />}
         {view === "usuarios" && canManageUsers(operationalProfile) && <Users key={`usuarios-${viewResetKey}`} profile={profile} />}
         {view === "organizaciones" && operationalProfile.is_master && <Page title="Clientes" subtitle="Organizaciones, planes y onboarding"><OrganizationOnboardingManager /></Page>}
@@ -1722,8 +1723,8 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       <div className="clinical-actions">
         {canAccessClinical(profile) && <button className={panel === "historia" ? "primary" : ""} onClick={() => setPanel("historia")}>Historia clinica</button>}
         <button className={panel === "datos" ? "primary" : "secondary-action"} onClick={() => setPanel("datos")}>Editar datos</button>
-        <button className={panel === "adjuntos" ? "primary" : "secondary-action"} onClick={() => setPanel("adjuntos")}>Adjuntar estudio</button>
-        <button className={panel === "enviar" ? "primary" : "secondary-action"} onClick={() => setPanel("enviar")}>Enviar documentos</button>
+        {canAccessClinical(profile) && <button className={panel === "adjuntos" ? "primary" : "secondary-action"} onClick={() => setPanel("adjuntos")}>Adjuntar estudio</button>}
+        {canAccessClinical(profile) && <button className={panel === "enviar" ? "primary" : "secondary-action"} onClick={() => setPanel("enviar")}>Enviar documentos</button>}
         <button className={panel === "nota" ? "primary" : "secondary-action"} onClick={() => setPanel("nota")}>Nota administrativa</button>
         {canAccessClinical(profile) && <button className={currentPatient.status === "baja" ? "primary" : "danger-action"} onClick={() => void togglePatientStatus()}>{currentPatient.status === "baja" ? "Reactivar paciente" : "Dar de baja"}</button>}
       </div>
@@ -2545,7 +2546,7 @@ function Users({ profile }: { profile: Profile }) {
 
   return (
     <Page title="Usuarios" subtitle="Accesos de la organizacion">
-      {config && <UserManager users={users} locations={config.locations} organizations={config.organizations} currentOrganizationId={profile.organization_id} canManageAdministrators={profile.is_master} onSaved={refresh} />}
+      {config && <UserManager users={users} locations={config.locations} organizations={config.organizations} currentOrganizationId={profile.organization_id} canManageAdministrators={profile.is_master} secretaryOnly={profile.role === "MEDICA_ADMIN" && !profile.is_master} onSaved={refresh} />}
     </Page>
   );
 }
