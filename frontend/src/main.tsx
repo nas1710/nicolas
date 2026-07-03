@@ -126,7 +126,8 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 
 function App() {
   const routePath = window.location.pathname.replace(/\/+$/, "") || "/";
-  const publicBookingPath = routePath === "/turnos";
+  const lightPublicBookingPath = routePath === "/light/turnos";
+  const publicBookingPath = routePath === "/turnos" || lightPublicBookingPath;
   const internalAppPath = routePath === "/app";
   const lightAppPath = routePath === "/light";
   const authCallback = window.location.hash.includes("type=recovery") || window.location.hash.includes("error=");
@@ -195,7 +196,7 @@ function App() {
   }, [profile?.id, internalAppPath, lightAppPath]);
 
   if (publicHomePath) return <PublicHomePage />;
-  if (publicBookingPath) return <PublicBookingPage />;
+  if (publicBookingPath) return <PublicBookingPage lightMode={lightPublicBookingPath} />;
   if (loading) return <div className="login"><div className="panel">Cargando...</div></div>;
   if (passwordRecovery) return <PasswordRecovery onDone={nextProfile => { setProfile(nextProfile); setPasswordRecovery(false); }} />;
   if (!profile) return <Login initialError={authLinkError} onLogin={nextProfile => {
@@ -272,6 +273,7 @@ function App() {
           <span>+</span>
           Nuevo turno
         </button>
+        {lightAppPath && <a className="light-public-booking-link" href={`/light/turnos${profile.organization?.slug ? `?org=${encodeURIComponent(profile.organization.slug)}` : ""}`} target="_blank" rel="noreferrer"><CalendarClock size={18} aria-hidden="true" /><span><strong>Turnera publica</strong><small>Vista para pacientes</small></span></a>}
         <nav className="nav-group">
           <span>Trabajo</span>
           <NavButton active={view === "inicio"} icon={<LayoutDashboard size={18} />} label="Inicio" hint="Resumen" onClick={() => navigate("inicio")} />

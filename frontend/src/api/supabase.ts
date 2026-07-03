@@ -73,7 +73,7 @@ export type Profile = {
   institutional_footer?: string | null;
   signature_path?: string | null;
   organization_id?: string | null;
-  organization?: { id:string; commercial_name:string; commercial_status:string; active:boolean } | null;
+  organization?: { id:string; slug?:string | null; commercial_name:string; commercial_status:string; active:boolean } | null;
   location?: Location | null;
   simulated?: boolean;
   simulated_professional_id?: string | null;
@@ -597,7 +597,7 @@ export async function getCurrentProfile() {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("*, location:locations!profiles_location_id_fkey(*), organization:organizations!profiles_organization_id_fkey(id,commercial_name,commercial_status,active)")
+    .select("*, location:locations!profiles_location_id_fkey(*), organization:organizations!profiles_organization_id_fkey(id,slug,commercial_name,commercial_status,active)")
     .eq("id", sessionData.session.user.id)
     .maybeSingle();
 

@@ -21,7 +21,7 @@ import { useBuenosAiresClock } from "../hooks/useBuenosAiresClock";
 import { toDateInputValue } from "../utils/dates";
 import { documentTypeOptions } from "../utils/identity";
 
-export function PublicBookingPage() {
+export function PublicBookingPage({ lightMode = false }: { lightMode?: boolean }) {
   const params = new URLSearchParams(window.location.search);
   const organizationSlug = params.get("org") || "";
   const officialClock = useBuenosAiresClock();
@@ -73,22 +73,23 @@ export function PublicBookingPage() {
       listPublicBookingInsurancePlans(organizationSlug),
       getOrganizationSettings(organizationSlug)
     ]).then(([catalogData, planItems, organizationData]) => {
-      setCatalog(catalogData);
+      const effectiveCatalog = lightMode ? cardiologyCatalog(catalogData) : catalogData;
+      setCatalog(effectiveCatalog);
       setInsurancePlans(planItems);
       setOrganization(organizationData);
       const requestedDoctor = params.get("profesional") || params.get("doctor") || "";
-      const professional = catalogData.professionals.find(item => item.id === requestedDoctor);
+      const professional = effectiveCatalog.professionals.find(item => item.id === requestedDoctor);
       const requested = params.get("especialidad");
-      const initialSpecialty = requested && catalogData.specialties.some(item => item.id === requested)
+      const initialSpecialty = requested && effectiveCatalog.specialties.some(item => item.id === requested)
         ? requested
-        : professional?.specialty_ids[0] || catalogData.specialties[0]?.id || "";
-      const initialPractices = catalogData.practices.filter(item => item.specialty_id === initialSpecialty && (!professional || professional.practice_ids.includes(item.id)));
+        : professional?.specialty_ids[0] || effectiveCatalog.specialties[0]?.id || "";
+      const initialPractices = effectiveCatalog.practices.filter(item => item.specialty_id === initialSpecialty && (!professional || professional.practice_ids.includes(item.id)));
       setSpecialtyId(initialSpecialty);
       setDoctorId(professional?.id || "");
       setPracticeIds(initialPractices[0] ? [initialPractices[0].id] : []);
     }).catch(err => setError(err instanceof Error ? err.message : "No se pudo cargar la agenda pública."))
       .finally(() => setLoadingCatalog(false));
-  }, [organizationSlug]);
+  }, [organizationSlug, lightMode]);
 
   useEffect(() => {
     setSelectedSlot(null);
@@ -138,11 +139,11 @@ export function PublicBookingPage() {
     }
   }
 
-  if (result) return <BookingConfirmation result={result} organization={organization} />;
+  if (result) return <BookingConfirmation result={result} organization={organization} lightMode={lightMode} />;
 
   return (
     <div className="public-booking-page" style={organizationTheme(organization)}>
-      <BookingBrand organization={organization} showLogin />
+      <BookingBrand organization={organization} showLogin lightMode={lightMode} />
       <main className="public-booking-main">
         <div className="public-booking-title">
           <div><span>Reserva online</span><h1>Solicitar turno</h1><p>Elegí la especialidad, el profesional que preferís y un horario disponible.</p></div>
@@ -226,14 +227,14 @@ function SelectedSlot({ slot }: { slot: PublicBookingSearchSlot }) {
   return <div className="selected-public-slot"><span className="selected-doctor-label">Profesional elegido</span><h3>{slot.doctor_name}</h3><strong>{formatLongDate(buenosAiresDate(slot.starts_at))} · {new Date(slot.starts_at).toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</strong><small>{slot.location_name}{slot.location_address ? ` · ${slot.location_address}` : ""}</small></div>;
 }
 
-function BookingConfirmation({ result, organization }: { result: PublicBookingResult; organization: OrganizationSettings | null }) {
+function BookingConfirmation({ result, organization, lightMode = false }: { result: PublicBookingResult; organization: OrganizationSettings | null; lightMode?: boolean }) {
   const startsAt = new Date(result.starts_at);
-  return <div className="public-booking-page" style={organizationTheme(organization)}><BookingBrand organization={organization} /><main className="public-booking-main confirmation-view"><section className="public-confirmation"><span className="confirmation-mark">OK</span><h1>Turno reservado</h1><p>El horario ya quedó asignado. Guardá estos datos para tu atención.</p><dl><div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div><div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div><div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Centro</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div><div><dt>Estado</dt><dd>Reservado</dd></div></dl><button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button></section></main></div>;
+  return <div className="public-booking-page" style={organizationTheme(organization)}><BookingBrand organization={organization} lightMode={lightMode} /><main className="public-booking-main confirmation-view"><section className="public-confirmation"><span className="confirmation-mark">OK</span><h1>Turno reservado</h1><p>El horario ya quedó asignado. Guardá estos datos para tu atención.</p><dl><div><dt>Profesional</dt><dd>{result.doctor_name}</dd></div><div><dt>Fecha</dt><dd>{startsAt.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</dd></div><div><dt>Hora</dt><dd>{startsAt.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Centro</dt><dd>{result.location_name}{result.location_address ? ` · ${result.location_address}` : ""}</dd></div><div><dt>Estado</dt><dd>Reservado</dd></div></dl><button className="primary" onClick={() => window.location.reload()}>Solicitar otro turno</button></section></main></div>;
 }
 
-function BookingBrand({ organization, showLogin = false }: { organization: OrganizationSettings | null; showLogin?: boolean }) {
+function BookingBrand({ organization, showLogin = false, lightMode = false }: { organization: OrganizationSettings | null; showLogin?: boolean; lightMode?: boolean }) {
   const logo = organization?.logo_path ? organizationLogoUrl(organization.logo_path) : "";
-  return <header className="public-booking-header">{logo ? <img className="public-booking-logo" src={logo} alt={organization?.commercial_name || "Institución"} /> : <span className="brand">SP</span>}<div><strong>{organization?.commercial_name || "Atención médica"}</strong><small>Turnos online</small></div>{showLogin && <a href="/login">Acceso profesionales</a>}</header>;
+  return <header className="public-booking-header">{logo ? <img className="public-booking-logo" src={logo} alt={organization?.commercial_name || "Institución"} /> : <span className="brand">{lightMode ? "CA" : "SP"}</span>}<div><strong>{organization?.commercial_name || (lightMode ? "Cardiología" : "Atención médica")}</strong><small>{lightMode ? "Cardiología y estudios · Turnos online" : "Turnos online"}</small></div>{showLogin && <a href={lightMode ? "/light" : "/login"}>Acceso profesionales</a>}</header>;
 }
 
 function organizationTheme(organization: OrganizationSettings | null): React.CSSProperties {
@@ -257,6 +258,16 @@ function addDays(date: string, days: number) { const value = new Date(`${date}T1
 function buenosAiresDate(value: string) { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)); }
 function formatLongDate(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long" }); }
 function uniqueOptions(items: Array<{ id: string; label: string }>) { const values = new Map<string, string>(); items.forEach(item => values.set(item.id, item.label)); return Array.from(values, ([id, label]) => ({ id, label })); }
+function cardiologyCatalog(catalog: PublicCommercialCatalog): PublicCommercialCatalog {
+  const specialties = catalog.specialties.filter(item => item.name.toLocaleLowerCase("es-AR").includes("cardio"));
+  const specialtyIds = new Set(specialties.map(item => item.id));
+  const practices = catalog.practices.filter(item => specialtyIds.has(item.specialty_id));
+  const practiceIds = new Set(practices.map(item => item.id));
+  const professionals = catalog.professionals
+    .filter(item => item.specialty_ids.some(id => specialtyIds.has(id)))
+    .map(item => ({ ...item, specialty_ids: item.specialty_ids.filter(id => specialtyIds.has(id)), practice_ids: item.practice_ids.filter(id => practiceIds.has(id)) }));
+  return { ...catalog, specialties, practices, professionals };
+}
 function practiceTone(name: string) {
   const value = name.toLocaleLowerCase("es-AR");
   if (value.includes("consulta")) return 0;

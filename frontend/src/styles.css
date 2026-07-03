@@ -504,6 +504,29 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
   background: rgba(16,33,39,0.12);
 }
 
+.light-public-booking-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 13px;
+  color: #dff7f3;
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid rgba(146, 220, 210, .28);
+  text-decoration: none;
+}
+
+.light-public-booking-link:hover {
+  background: rgba(223, 247, 243, .14);
+  border-color: #8ed8cd;
+}
+
+.light-public-booking-link span { display: grid; gap: 1px; }
+.light-public-booking-link strong { font-size: 14px; }
+.light-public-booking-link small { color: #a9cecc; font-size: 11px; }
+.menu-collapsed .light-public-booking-link span { display: none; }
+.menu-collapsed .light-public-booking-link { justify-content: center; padding-inline: 0; }
+
 .menu-collapsed .sidebar {
   padding: 18px 14px;
   align-items: center;
