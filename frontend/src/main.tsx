@@ -2900,6 +2900,8 @@ function AvailabilityManager({ locations, availability, professionals, currentPr
 
 function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: { item: MedicalAvailability; locations: Location[]; professionals: Profile[]; canEdit: boolean; onSaved: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [form, setForm] = useState<MedicalAvailabilityInput>({
     location_id: item.location_id,
     doctor_id: item.doctor_id,
@@ -2910,37 +2912,55 @@ function AvailabilityRow({ item, locations, professionals, canEdit, onSaved }: {
     enabled: item.enabled
   });
 
-  if (!editing) return <article className={form.enabled ? "availability-slot-card" : "availability-slot-card inactive"}>
-    <div><strong>{form.start_time.slice(0, 5)}–{form.end_time.slice(0, 5)}</strong><small>{locations.find(location => location.id === form.location_id)?.name || "Consultorio no disponible"}</small><span>Cada {form.slot_interval_min} min</span></div>
-    {canEdit && <button type="button" className="icon-button" title="Editar horario" aria-label="Editar horario" onClick={() => setEditing(true)}><Pencil size={16} /></button>}
-  </article>;
+  async function toggleEnabled() {
+    if (form.enabled && !window.confirm(`Dar de baja el horario ${form.start_time.slice(0, 5)}-${form.end_time.slice(0, 5)}? Dejará de ofrecer turnos nuevos.`)) return;
+    setSaving(true); setError("");
+    try {
+      const nextEnabled = !form.enabled;
+      await updateAvailability(item.id, { ...form, enabled: nextEnabled });
+      setForm(current => ({ ...current, enabled: nextEnabled }));
+      await onSaved();
+    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del horario."); }
+    finally { setSaving(false); }
+  }
 
-  return (
-    <div className="editable-row availability-row editing">
-      <select value={form.doctor_id || ""} onChange={e => setForm({ ...form, doctor_id: e.target.value })} disabled={!canEdit}>
-        {professionals.map(professional => <option key={professional.id} value={professional.id}>{professionalOptionLabel(professional)}</option>)}
-      </select>
-      <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} disabled={!canEdit}>
-        {locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
-      </select>
-      <select value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })} disabled={!canEdit}>
-        {[1,2,3,4,5,6,0].map(day => <option key={day} value={day}>{weekdayName(day)}</option>)}
-      </select>
-      <input type="time" step="900" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} disabled={!canEdit} />
-      <input type="time" step="900" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} disabled={!canEdit} />
-      <select value={form.slot_interval_min} onChange={e => setForm({ ...form, slot_interval_min: Number(e.target.value) })} disabled={!canEdit}>
-        {durationOptions().map(value => <option key={value} value={value}>{value} min</option>)}
-      </select>
-      <span className={form.enabled ? "badge ok" : "badge muted"}>{form.enabled ? "Activo" : "Inactivo"}</span>
-      {canEdit && (
-        <div className="row-actions">
-          <button onClick={async () => { await updateAvailability(item.id, form); await onSaved(); setEditing(false); }}>Guardar</button>
-          <button type="button" onClick={() => setEditing(false)}>Cancelar</button>
-          <button onClick={async () => { await updateAvailability(item.id, { ...form, enabled: !form.enabled }); await onSaved(); setEditing(false); }}>{form.enabled ? "Desactivar" : "Activar"}</button>
-        </div>
-      )}
-    </div>
-  );
+  async function saveChanges(event: React.FormEvent) {
+    event.preventDefault();
+    if (timeToMinutes(form.start_time) >= timeToMinutes(form.end_time)) return setError("La hora de inicio debe ser anterior a la hora de fin.");
+    setSaving(true); setError("");
+    try { await updateAvailability(item.id, form); await onSaved(); setEditing(false); }
+    catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar el horario."); }
+    finally { setSaving(false); }
+  }
+
+  return <>
+    <article className={form.enabled ? "availability-slot-card" : "availability-slot-card inactive"}>
+      <div className="availability-slot-main">
+        <span className={form.enabled ? "availability-state active" : "availability-state inactive"}>{form.enabled ? "Activo" : "Baja"}</span>
+        <strong>{form.start_time.slice(0, 5)}–{form.end_time.slice(0, 5)}</strong>
+        <small>{locations.find(location => location.id === form.location_id)?.name || "Consultorio no disponible"}</small>
+        <span className="availability-frequency">Turnos cada {form.slot_interval_min} min</span>
+      </div>
+      {canEdit && <div className="availability-card-actions">
+        <button type="button" className="icon-button" title="Editar horario" aria-label="Editar horario" onClick={() => { setError(""); setEditing(true); }}><Pencil size={16} /></button>
+        <button type="button" className={form.enabled ? "icon-button availability-disable" : "icon-button availability-enable"} title={form.enabled ? "Dar de baja" : "Reactivar"} aria-label={form.enabled ? "Dar de baja horario" : "Reactivar horario"} disabled={saving} onClick={() => void toggleEnabled()}>{form.enabled ? <XCircle size={17} /> : <Check size={17} />}</button>
+      </div>}
+      {error && !editing && <p className="error availability-card-error">{error}</p>}
+    </article>
+    {editing && <Modal onClose={() => setEditing(false)}>
+      <form className="availability-edit-form" onSubmit={saveChanges}>
+        <div className="full-field"><h2>Editar horario de atención</h2><p>Ajustá el día, consultorio y duración del bloque.</p></div>
+        <label>Profesional<select value={form.doctor_id || ""} onChange={e => setForm({ ...form, doctor_id: e.target.value })}>{professionals.map(professional => <option key={professional.id} value={professional.id}>{professionalOptionLabel(professional)}</option>)}</select></label>
+        <label>Consultorio<select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })}>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+        <label>Día<select value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })}>{[1,2,3,4,5,6,0].map(day => <option key={day} value={day}>{weekdayName(day)}</option>)}</select></label>
+        <label>Desde<input type="time" step="900" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} /></label>
+        <label>Hasta<input type="time" step="900" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} /></label>
+        <label>Turnos cada<select value={form.slot_interval_min} onChange={e => setForm({ ...form, slot_interval_min: Number(e.target.value) })}>{durationOptions().map(value => <option key={value} value={value}>{value} min</option>)}</select></label>
+        {error && <p className="error full-field">{error}</p>}
+        <div className="form-actions full-field"><button type="button" onClick={() => setEditing(false)}>Cancelar</button><button className="primary" disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</button></div>
+      </form>
+    </Modal>}
+  </>;
 }
 
 function professionalOptionLabel(profile: Pick<Profile, "full_name" | "specialty" | "professional_license">) {

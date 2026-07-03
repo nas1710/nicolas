@@ -1390,19 +1390,36 @@ input, select, textarea {
 .settings-module-content > .panel,
 .settings-module-content > .admin-section { margin: 0; }
 .settings-stack { display: grid; gap: 14px; }
-.availability-week-grid { display:grid; grid-template-columns:repeat(7,minmax(130px,1fr)); gap:8px; margin-top:14px; overflow-x:auto; padding-bottom:6px; }
-.availability-day-column { min-height:150px; border:1px solid #d7e1e3; background:#f6f8f9; }
-.availability-day-column.has-slots { border-color:#b7d2d4; background:#fff; }
-.availability-day-column > header { display:grid; gap:2px; padding:10px; border-bottom:1px solid #d7e1e3; background:#e9f0f1; }
-.availability-day-column > header strong { font-size:14px; }
-.availability-day-column > header small { color:#687b81; }
-.availability-day-column > div { display:grid; gap:6px; padding:7px; }
-.availability-slot-card { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; padding:9px; border-left:4px solid #21a27b; background:#edf9f5; }
-.availability-slot-card.inactive { opacity:.58; border-left-color:#8a989d; }
-.availability-slot-card > div { display:grid; gap:2px; min-width:0; }
-.availability-slot-card strong { font-size:14px; }
-.availability-slot-card small { overflow:hidden; color:#38565c; text-overflow:ellipsis; white-space:nowrap; }
-.availability-slot-card span { color:#6a7c82; font-size:11px; }
+.availability-week-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:18px; }
+.availability-day-column { min-height:128px; border:1px solid #d5e0e2; border-radius:8px; background:#f5f7f8; overflow:hidden; }
+.availability-day-column.has-slots { border-color:#a9d4cd; background:#fff; box-shadow:0 5px 16px rgba(26,67,72,.06); }
+.availability-day-column > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid #d7e1e3; background:#e8eff0; }
+.availability-day-column.has-slots > header { color:#075e57; background:#e7f6f2; }
+.availability-day-column > header strong { font-size:15px; }
+.availability-day-column > header small { color:#687b81; font-size:11px; font-weight:700; }
+.availability-day-column > div { display:grid; gap:8px; padding:9px; }
+.availability-slot-card { position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:10px; border:1px solid #bce2d8; border-left:5px solid #168c70; border-radius:6px; background:#edfaf6; }
+.availability-slot-card.inactive { border-color:#d8dfe1; border-left-color:#8b989c; background:#f1f3f4; }
+.availability-slot-main { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:3px 7px; min-width:0; }
+.availability-slot-card strong { grid-column:1/-1; font-size:16px; color:#093f3c; }
+.availability-slot-card.inactive strong { color:#657277; text-decoration:line-through; }
+.availability-slot-card small { grid-column:1/-1; overflow:hidden; color:#38565c; text-overflow:ellipsis; white-space:nowrap; }
+.availability-slot-card .availability-frequency { grid-column:1/-1; color:#6a7c82; font-size:11px; }
+.availability-state { width:max-content; padding:2px 6px; border-radius:999px; font-size:10px; font-weight:900; text-transform:uppercase; }
+.availability-state.active { color:#076146; background:#ccefe2; }
+.availability-state.inactive { color:#626e72; background:#dfe4e6; }
+.availability-card-actions { display:flex; gap:5px; }
+.availability-card-actions .icon-button { width:34px; height:34px; flex:0 0 34px; }
+.availability-disable { color:#ad3127 !important; background:#fff1ef !important; border-color:#f0c2bd !important; }
+.availability-enable { color:#08714e !important; background:#e6f7ef !important; border-color:#b7e1cf !important; }
+.availability-card-error { grid-column:1/-1; margin:4px 0 0; font-size:11px; }
+.availability-edit-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.availability-edit-form label { display:grid; gap:5px; font-weight:800; color:#50656b; }
+.availability-edit-form select,.availability-edit-form input { width:100%; }
+@media (max-width: 700px) {
+  .availability-week-grid { grid-template-columns:1fr; }
+  .availability-edit-form { grid-template-columns:1fr; }
+}
 .icon-button { display:inline-grid; place-items:center; flex:0 0 auto; width:31px; height:31px; padding:0; border:1px solid #bcd0d3; background:#fff; color:#176f78; }
 .icon-button:hover { border-color:#176f78; background:#e3f2f0; }
 .availability-row.editing { grid-column:1/-1; margin:0; padding:10px; }
