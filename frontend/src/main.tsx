@@ -2850,14 +2850,17 @@ function AvailabilityManager({ locations, availability, professionals, currentPr
     enabled: true
   });
   const [error, setError] = useState("");
+  const [showInactiveAvailability, setShowInactiveAvailability] = useState(false);
   useEffect(() => {
     if (selectedDoctorId || !selectableProfessionals[0]) return;
     setSelectedDoctorId(selectableProfessionals[0].id);
     setForm(current => ({ ...current, doctor_id: selectableProfessionals[0].id }));
   }, [selectedDoctorId, selectableProfessionals]);
-  const selectedAvailability = availability
+  const allSelectedAvailability = availability
     .filter(item => !selectedDoctorId || item.doctor_id === selectedDoctorId)
     .sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time));
+  const inactiveAvailabilityCount = allSelectedAvailability.filter(item => !item.enabled).length;
+  const selectedAvailability = allSelectedAvailability.filter(item => item.enabled || showInactiveAvailability);
   const weekDays = [1, 2, 3, 4, 5, 6, 0];
 
   async function submit(event: React.FormEvent) {
@@ -2904,6 +2907,7 @@ function AvailabilityManager({ locations, availability, professionals, currentPr
           {error && <p className="error">{error}</p>}
         </form>
       )}
+      {inactiveAvailabilityCount > 0 && <div className="inactive-list-toggle"><button type="button" className="secondary-action" onClick={() => setShowInactiveAvailability(value => !value)}>{showInactiveAvailability ? "Ocultar horarios archivados" : `Ver horarios archivados (${inactiveAvailabilityCount})`}</button></div>}
       <div className="availability-week-grid">
         {weekDays.map(day => { const dayItems = selectedAvailability.filter(item => item.weekday === day); return <section key={day} className={dayItems.length ? "availability-day-column has-slots" : "availability-day-column"}>
           <header><strong>{weekdayName(day)}</strong><small>{dayItems.length ? `${dayItems.length} ${dayItems.length === 1 ? "bloque" : "bloques"}` : "Sin atención"}</small></header>
