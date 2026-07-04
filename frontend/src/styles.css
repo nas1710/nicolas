@@ -4247,3 +4247,42 @@ body .public-slot.selected { border-color: var(--action); background: var(--acti
 }
 
 .light-shell .nav-group { border-color: rgba(143, 205, 196, .2); }
+
+/* Operational density: stable agenda cards and unobtrusive overlays. */
+body .appointment-card {
+  height: 116px;
+  min-height: 116px;
+  max-height: 116px;
+  overflow: hidden;
+}
+body .appointment-card .slot-button { align-content:start; min-height:0; }
+body .appointment-card .slot-button > strong,
+body .appointment-card .slot-button > span,
+body .appointment-card .slot-button > small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+body .appointment-card .slot-link { margin-top:auto; }
+
+body .notification-popover {
+  position:fixed;
+  z-index:100;
+  top:72px;
+  right:24px;
+  left:auto;
+  width:min(440px,calc(100vw - 32px));
+  max-height:calc(100vh - 96px);
+}
+
+.commercial-rows > .practice-catalog-row { grid-template-columns:minmax(140px,.8fr) minmax(105px,.45fr) auto minmax(210px,1.2fr) auto auto auto; }
+.practice-catalog-row > div { display:grid; gap:2px; }
+.practice-catalog-row > div small { color:#697b81; }
+.practice-catalog-row > label:not(.compact-check) { display:grid; gap:3px; color:#52676d; font-size:11px; font-weight:800; }
+.practice-catalog-row .compact-check { white-space:nowrap; font-size:12px; }
+.practice-catalog-row input[type="checkbox"] { width:17px; height:17px; min-width:17px; margin:0; }
+.light-practice-create { grid-template-columns:1fr; }
+.light-practice-create form { display:grid; grid-template-columns:minmax(180px,1fr) 110px auto; }
+.inactive-list-toggle { display:flex; justify-content:flex-end; margin:10px 0 4px; }
+
+@media (max-width:760px) {
+  body .notification-popover { top:62px; right:10px; width:calc(100vw - 20px); max-height:calc(100vh - 130px); }
+  .commercial-rows > .practice-catalog-row,
+  .light-practice-create form { grid-template-columns:1fr; }
+}

@@ -1680,7 +1680,6 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
   const [panel, setPanel] = useState<"historia" | "datos" | "adjuntos" | "nota" | "enviar">("historia");
   const [showDocumentGenerator, setShowDocumentGenerator] = useState(false);
   const [historyProfessionalId, setHistoryProfessionalId] = useState("all");
-  const [historyOrder, setHistoryOrder] = useState<"desc" | "asc">("desc");
   const [showEvolutionForm, setShowEvolutionForm] = useState(false);
   const clinicalHistory = [...(currentPatient.clinical_evolutions || [])].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
   const historyProfessionals = Array.from(new Map(clinicalHistory.filter(item => item.author).map(item => [item.created_by || item.author!.id, item.author!])).entries());
@@ -1691,7 +1690,7 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
     ...(currentPatient.studies || []).map(item => ({ id: `s-${item.id}`, date: item.performed_at || "", kind: "study" as const, study: item })).filter(item => item.date),
     ...(currentPatient.attachments || []).map(item => ({ id: `a-${item.id}`, date: item.created_at, kind: "attachment" as const, attachment: item })),
     ...(currentPatient.appointments || []).filter(item => item.status !== "CANCELADO" && new Date(item.starts_at).getTime() <= Date.now()).map(item => ({ id: `t-${item.id}`, date: item.starts_at, kind: "appointment" as const, appointment: item }))
-  ].sort((a, b) => (historyOrder === "asc" ? 1 : -1) * (new Date(a.date).getTime() - new Date(b.date).getTime()));
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   async function refresh() {
     setCurrentPatient(await getPatient(patient.id));
@@ -1752,10 +1751,9 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
       {panel === "adjuntos" && <section className="patient-panel-section"><h2>Estudios y documentos adjuntos</h2><AttachmentList attachments={currentPatient.attachments || []} /></section>}
       {panel === "historia" && canAccessClinical(profile) && <section className="clinical-history-section">
         <header>
-          <div><span>Historia clínica</span><h2>Línea de tiempo</h2><p>{visibleClinicalHistory.length} {visibleClinicalHistory.length === 1 ? "registro" : "registros"} · más reciente primero</p></div>
+          <div><h2>Historia clínica</h2><p>{clinicalTimelineItems.length} {clinicalTimelineItems.length === 1 ? "registro" : "registros"} · más reciente primero</p></div>
           <div className="clinical-history-actions">
             {isDoctorRole(profile.role) && !profile.simulated && <button className="primary" onClick={() => setShowEvolutionForm(value => !value)}>{showEvolutionForm ? "Cerrar carga" : "+ Nueva atención"}</button>}
-            {canAccessClinical(profile) && <button className="secondary-action" onClick={() => void printClinicalHistory(printablePatient, profile)}>Imprimir historia</button>}
           </div>
         </header>
         {showEvolutionForm && isDoctorRole(profile.role) && !profile.simulated && <ClinicalEvolutionForm patient={currentPatient} onSaved={async () => { await refresh(); setShowEvolutionForm(false); }} />}
@@ -1763,7 +1761,6 @@ function PatientChart({ patient, profile, notice, onBack }: { patient: Patient; 
           <button type="button" className={historyProfessionalId === "all" ? "active" : ""} onClick={() => setHistoryProfessionalId("all")}>Todos los profesionales</button>
           {historyProfessionals.map(([id, author]) => <button type="button" key={id} className={historyProfessionalId === id ? "active" : ""} onClick={() => setHistoryProfessionalId(id)}>{author.full_name}</button>)}
         </div>}
-        <div className="history-order-control"><span>Cronología</span><button type="button" className={historyOrder === "desc" ? "active" : ""} onClick={() => setHistoryOrder("desc")}>Más reciente</button><button type="button" className={historyOrder === "asc" ? "active" : ""} onClick={() => setHistoryOrder("asc")}>Desde el inicio</button></div>
         {profile.role === "SECRETARIA" && <p className="notice">Las evoluciones clinicas, diagnosticos y notas medicas estan protegidas por RLS y no se muestran para secretaria.</p>}
         {canAccessClinical(profile) && !clinicalHistory.length && <p className="empty-day">Todavía no hay evoluciones clínicas registradas.</p>}
         {canAccessClinical(profile) && <div className="clinical-timeline">{clinicalTimelineItems.map(item => <PatientTimelineEntry key={item.id} item={item} />)}</div>}
@@ -2265,7 +2262,7 @@ function AdministrativeNoteForm({ patient, onSaved }: { patient: Patient; onSave
   );
 }
 function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Patient; onUploaded: () => Promise<void>; embedded?: boolean }) {
-  const [mode, setMode] = useState<"drive" | "upload">("drive");
+  const [mode, setMode] = useState<"drive" | "upload">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [driveUrl, setDriveUrl] = useState("");
   const [driveFileName, setDriveFileName] = useState("");
@@ -2302,10 +2299,10 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
   return (
     <form className={embedded ? "attach-form embedded-attach-form" : "panel attach-form"} onSubmit={submit}>
       <h2>Elegir cómo guardar el documento</h2>
-      <p className="attach-mode-help">Vinculá un archivo que ya está en Google Drive o subí una copia desde este dispositivo.</p>
+      <p className="attach-mode-help">Elegí un archivo como en cualquier carga. También podés seleccionarlo desde una carpeta de Google Drive sincronizada en esta computadora.</p>
       <div className="segmented">
-        <button type="button" className={mode === "drive" ? "active" : ""} onClick={() => setMode("drive")}>Vincular desde Drive</button>
-        <button type="button" className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Subir archivo</button>
+        <button type="button" className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Elegir archivo</button>
+        <button type="button" className={mode === "drive" ? "active" : ""} onClick={() => setMode("drive")}>Vincular enlace de Drive</button>
       </div>
       <div className="form-grid">
         {mode === "drive" ? (
@@ -2328,7 +2325,7 @@ function AttachmentForm({ patient, onUploaded, embedded = false }: { patient: Pa
         </label>
         <label>Descripcion<input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ej: eco previa, laboratorio, Holter externo" /></label>
       </div>
-      <p className="notice">{mode === "drive" ? "Se guarda el enlace de Google Drive en la historia. El archivo no se copia a Supabase." : "Se sube una copia segura y queda archivada en la historia."}</p>
+      <p className="notice">{mode === "drive" ? "Usá esta opción solo si ya tenés un enlace compartido de Drive. No se copia el archivo." : "Podés elegir un archivo local o de una carpeta de Drive sincronizada. Se guarda una copia segura en la historia."}</p>
       {error && <p className="error">{error}</p>}
       <button className="primary" disabled={loading}>{loading ? "Guardando..." : "Guardar adjunto"}</button>
     </form>
@@ -2486,14 +2483,15 @@ function Settings({ profile, lightMode = false }: { profile: Profile; lightMode?
   type SettingsModule = "organizacion" | "catalogo" | "consultorios" | "agenda" | "coberturas" | "comunicaciones" | "documentos" | "auditoria";
   const isOrganizationAdmin = profile.is_master || profile.role === "ADMINISTRADOR";
   const canManageLocations = isOrganizationAdmin || (lightMode && profile.role === "MEDICA_ADMIN");
+  const canManageCatalog = isOrganizationAdmin || (lightMode && profile.role === "MEDICA_ADMIN");
   const hasOwnProfessionalProfile = !profile.is_master && isDoctorRole(profile.role) && !profile.simulated;
   const modules: Array<{ id: SettingsModule; label: string; hint: string; icon: React.ElementType }> = [
     ...(isOrganizationAdmin ? [
       { id: "organizacion" as const, label: "Organizacion", hint: "Marca, contacto y sedes", icon: Building2 },
-      { id: "catalogo" as const, label: "Catalogo", hint: "Especialidades y practicas", icon: Stethoscope },
       { id: "comunicaciones" as const, label: "Comunicaciones", hint: "Plantillas de mensajes", icon: Megaphone },
       { id: "auditoria" as const, label: "Auditoria", hint: "Ingresos y actividad", icon: ShieldCheck }
     ] : []),
+    ...(canManageCatalog ? [{ id: "catalogo" as const, label: lightMode ? "Prácticas" : "Catalogo", hint: lightMode ? "Duración e indicaciones" : "Especialidades y practicas", icon: Stethoscope }] : []),
     ...(canManageLocations ? [{ id: "consultorios" as const, label: "Consultorios", hint: "Lugares de atencion", icon: MapPin }] : []),
     { id: "agenda", label: "Agenda", hint: "Horarios y dias no laborables", icon: CalendarDays },
     { id: "coberturas", label: "Obras sociales", hint: "Coberturas disponibles", icon: ClipboardList },
@@ -2521,12 +2519,12 @@ function Settings({ profile, lightMode = false }: { profile: Profile; lightMode?
           </nav>
           <div className="settings-module-content">
             {module === "organizacion" && isOrganizationAdmin && <OrganizationSettingsManager />}
-            {module === "catalogo" && isOrganizationAdmin && <CommercialCatalogManager />}
+            {module === "catalogo" && canManageCatalog && <CommercialCatalogManager lightMode={lightMode} />}
             {module === "consultorios" && <LocationManager locations={data.locations} organizationId={profile.organization_id} canEdit={canManageLocations} onSaved={refresh} />}
             {module === "comunicaciones" && isOrganizationAdmin && <CommunicationTemplateManager />}
             {module === "coberturas" && <InsuranceManager plans={data.insurancePlans} canEdit={canManageConfiguration(profile)} onSaved={refresh} />}
             {module === "agenda" && <div className="settings-stack"><AvailabilityManager locations={data.locations} availability={data.availability} professionals={professionals} currentProfile={profile} canEdit={canManageConfiguration(profile)} onSaved={refresh} /><HolidayManager holidays={data.holidays} canEdit={canManageConfiguration(profile)} onSaved={refresh} /></div>}
-            {module === "documentos" && hasOwnProfessionalProfile && <ProfessionalDocumentSettings profile={profile} />}
+            {module === "documentos" && hasOwnProfessionalProfile && <ProfessionalDocumentSettings profile={profile} lightMode={lightMode} />}
             {module === "auditoria" && isOrganizationAdmin && <AuditLogManager />}
           </div>
         </div>
@@ -2591,7 +2589,7 @@ function auditActionLabel(action: string) {
   return action.replace(/_/g, " ").toLocaleLowerCase("es").replace(/^./, value => value.toUpperCase());
 }
 
-function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
+function ProfessionalDocumentSettings({ profile, lightMode = false }: { profile: Profile; lightMode?: boolean }) {
   const [form, setForm] = useState({
     specialty: profile.specialty || profile.public_booking_specialty || "",
     professional_license: profile.professional_license || "",
@@ -2627,7 +2625,7 @@ function ProfessionalDocumentSettings({ profile }: { profile: Profile }) {
   return <section className="panel admin-section professional-document-settings">
     <h2>Datos para documentos PDF</h2>
     <form className="form-grid" onSubmit={submit}>
-      <label>Institucion<input value={form.institution_name} onChange={event => setForm({ ...form, institution_name: event.target.value })} placeholder="Nombre del centro o consultorio" /></label>
+      {!lightMode && <label>Institucion<input value={form.institution_name} onChange={event => setForm({ ...form, institution_name: event.target.value })} placeholder="Nombre del centro o consultorio" /></label>}
       <label>Especialidad<input value={form.specialty} onChange={event => setForm({ ...form, specialty: event.target.value })} placeholder="Especialidad profesional" /></label>
       <label>Matricula<input value={form.professional_license} onChange={event => setForm({ ...form, professional_license: event.target.value })} placeholder="MP / MN" /></label>
       <label>Nombre de firma<input value={form.signature_name} onChange={event => setForm({ ...form, signature_name: event.target.value })} /></label>
@@ -2643,6 +2641,9 @@ function LocationManager({ locations, organizationId, canEdit, onSaved }: { loca
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+  const inactiveCount = locations.filter(location => !location.active).length;
+  const visibleLocations = locations.filter(location => location.active || showInactive);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -2670,8 +2671,9 @@ function LocationManager({ locations, organizationId, canEdit, onSaved }: { loca
           <button className="primary">Agregar consultorio</button>
         </form>
       )}
+      {inactiveCount > 0 && <div className="inactive-list-toggle"><button type="button" className="secondary-action" onClick={() => setShowInactive(value => !value)}>{showInactive ? "Ocultar dados de baja" : `Ver dados de baja (${inactiveCount})`}</button></div>}
       <div className="list compact-list">
-        {locations.map(location => <LocationRow key={location.id} location={location} canEdit={canEdit} onSaved={onSaved} />)}
+        {visibleLocations.map(location => <LocationRow key={location.id} location={location} canEdit={canEdit} onSaved={onSaved} />)}
       </div>
     </section>
   );
