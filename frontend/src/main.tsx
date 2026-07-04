@@ -2642,8 +2642,10 @@ function LocationManager({ locations, organizationId, canEdit, onSaved }: { loca
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const inactiveCount = locations.filter(location => !location.active).length;
-  const visibleLocations = locations.filter(location => location.active || showInactive);
+  const [locallyHiddenIds, setLocallyHiddenIds] = useState<string[]>([]);
+  const isVisible = (location: Location) => location.active && !locallyHiddenIds.includes(location.id);
+  const inactiveCount = locations.filter(location => !isVisible(location)).length;
+  const visibleLocations = locations.filter(location => isVisible(location) || showInactive);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -2671,15 +2673,15 @@ function LocationManager({ locations, organizationId, canEdit, onSaved }: { loca
           <button className="primary">Agregar consultorio</button>
         </form>
       )}
-      {inactiveCount > 0 && <div className="inactive-list-toggle"><button type="button" className="secondary-action" onClick={() => setShowInactive(value => !value)}>{showInactive ? "Ocultar dados de baja" : `Ver dados de baja (${inactiveCount})`}</button></div>}
+      {inactiveCount > 0 && <div className="inactive-list-toggle"><button type="button" className="secondary-action" onClick={() => setShowInactive(value => !value)}>{showInactive ? "Ocultar consultorios archivados" : `Ver consultorios archivados (${inactiveCount})`}</button></div>}
       <div className="list compact-list">
-        {visibleLocations.map(location => <LocationRow key={location.id} location={location} canEdit={canEdit} onSaved={onSaved} />)}
+        {visibleLocations.map(location => <LocationRow key={location.id} location={location} canEdit={canEdit} onHidden={id => setLocallyHiddenIds(current => current.includes(id) ? current : [...current, id])} onReactivated={id => setLocallyHiddenIds(current => current.filter(item => item !== id))} onSaved={onSaved} />)}
       </div>
     </section>
   );
 }
 
-function LocationRow({ location, canEdit, onSaved }: { location: Location; canEdit: boolean; onSaved: () => Promise<void> }) {
+function LocationRow({ location, canEdit, onHidden, onReactivated, onSaved }: { location: Location; canEdit: boolean; onHidden: (id: string) => void; onReactivated: (id: string) => void; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address || "");
   const [error, setError] = useState("");
@@ -2695,6 +2697,18 @@ function LocationRow({ location, canEdit, onSaved }: { location: Location; canEd
     }
   }
 
+  async function toggleVisibility() {
+    setError("");
+    try {
+      const nextActive = !location.active;
+      await updateLocation(location.id, { name, address, active: nextActive });
+      if (nextActive) onReactivated(location.id); else onHidden(location.id);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar la visibilidad del consultorio.");
+    }
+  }
+
   return (
     <div className="editable-row">
       <input value={name} onChange={e => setName(e.target.value)} disabled={!canEdit} />
@@ -2703,8 +2717,8 @@ function LocationRow({ location, canEdit, onSaved }: { location: Location; canEd
       {canEdit && (
         <div className="row-actions">
           <button onClick={async () => { await updateLocation(location.id, { name, address, active: location.active }); await onSaved(); }}>Guardar</button>
-          <button onClick={async () => { await updateLocation(location.id, { name, address, active: !location.active }); await onSaved(); }}>{location.active ? "Dar de baja" : "Reactivar"}</button>
-          <button className="danger-action" onClick={() => void remove()}>Eliminar</button>
+          <button className={location.active ? "secondary-action" : "primary"} onClick={() => void toggleVisibility()}>{location.active ? "Ocultar" : "Reactivar"}</button>
+          {!location.active && <button className="danger-action" onClick={() => void remove()}>Eliminar definitivamente</button>}
         </div>
       )}
       {error && <small className="error location-row-error">{error}</small>}
