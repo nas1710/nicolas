@@ -2918,6 +2918,32 @@ input, select, textarea {
   gap: 8px;
 }
 
+.slot-picker-summary {
+  margin:14px 0;
+  padding:14px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  border:1px solid #cfdde1;
+  border-left:5px solid #d7a51c;
+  border-radius:8px;
+  background:#fffaf0;
+}
+.slot-picker-summary.selected { border-left-color:#16827f; background:#edf9f6; }
+.slot-picker-summary > div { display:grid; gap:4px; }
+.slot-picker-summary > div > strong { display:flex; align-items:center; gap:8px; }
+.slot-picker-summary > div > span { color:#526970; }
+.modal-panel:has(.slot-picker-modal) { width:min(760px,100%); }
+.slot-picker-modal { display:grid; gap:18px; }
+.slot-picker-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding-bottom:14px; border-bottom:1px solid #dbe5e7; }
+.slot-picker-modal-head span { color:#176f78; font-size:12px; font-weight:900; text-transform:uppercase; }
+.slot-picker-modal-head h2 { margin:4px 0 0; text-transform:capitalize; }
+.slot-picker-modal .slot-picker-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); max-height:55vh; overflow:auto; padding:2px; }
+.slot-picker-modal .pick-slot { min-height:82px; padding:12px; }
+.slot-picker-modal .pick-slot.free { background:#e5f6f1; border-color:#82cbbc; color:#075b4c; }
+.slot-picker-modal .pick-slot.occupied { background:#fff1f1; border-color:#e3a4a7; color:#8d2830; }
+
 .pick-slot {
   min-height: 58px;
   display: grid;
@@ -4321,4 +4347,7 @@ body .patient-list .patient-contact-action.disabled-link { opacity:.42; pointer-
   body .notification-popover { top:62px; right:10px; width:calc(100vw - 20px); max-height:calc(100vh - 130px); }
   .commercial-rows > .practice-catalog-row,
   .light-practice-create form { grid-template-columns:1fr; }
+  .slot-picker-summary { align-items:stretch; flex-direction:column; }
+  .slot-picker-summary button { width:100%; }
+  .slot-picker-modal .slot-picker-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

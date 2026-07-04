@@ -1182,6 +1182,7 @@ function AppointmentForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [patientSearch, setPatientSearch] = useState("");
+  const [showSlotPicker, setShowSlotPicker] = useState(false);
 
   useEffect(() => {
     listPatients().then(setPatients);
@@ -1259,7 +1260,15 @@ function AppointmentForm({
     setSelectedLocationId(slot.locationId);
     setForm({ ...form, starts_at: slot.startsAt, location_id: slot.locationId });
     setNewPatient(current => ({ ...current, location_id: slot.locationId }));
+    setShowSlotPicker(false);
     if (jumpToPatient) focusPatientSection();
+  }
+
+  function chooseDate(value: string) {
+    setSelectedDate(value);
+    setSelectedLocationId("");
+    setForm(current => ({ ...current, starts_at: "", location_id: "" }));
+    setShowSlotPicker(true);
   }
 
   return (
@@ -1279,11 +1288,11 @@ function AppointmentForm({
       </div>
       <div className="form-grid appointment-core-fields">
         {initial && <div className="locked-agenda"><span>Consultorio asignado por el horario</span><strong>{selectedLocation?.name || "Consultorio"}</strong></div>}
-        <label>Fecha<input type="date" value={selectedDate} min={toDateInputValue(new Date())} onChange={e => { setSelectedDate(e.target.value); setSelectedLocationId(""); setForm({ ...form, starts_at: "", location_id: "" }); }} /></label>
+        <label>Fecha<input type="date" value={selectedDate} min={toDateInputValue(new Date())} onChange={e => chooseDate(e.target.value)} /></label>
         {!initial && <div className="appointment-date-strip full-field" aria-label="Proximos dias con atencion">
           {upcomingAttentionDays.map(date => {
             const value = toDateInputValue(date);
-            return <button type="button" key={value} className={selectedDate === value ? "active" : ""} onClick={() => { setSelectedDate(value); setSelectedLocationId(""); setForm({ ...form, starts_at: "", location_id: "" }); }}><span>{weekdayName(date.getDay())}</span><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}</strong></button>;
+            return <button type="button" key={value} className={selectedDate === value ? "active" : ""} onClick={() => chooseDate(value)}><span>{weekdayName(date.getDay())}</span><strong>{date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}</strong></button>;
           })}
         </div>}
         <AppointmentTypePicker value={form.types} onChange={types => setForm({ ...form, types })} />
@@ -1295,28 +1304,20 @@ function AppointmentForm({
         <label>Detalle / observacion<input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="Control, retiro de equipo, indicacion breve..." /></label>
       </div>
 
-      <div className="slot-picker">
-        <div className="slot-picker-head">
-          <strong><span className="step-number">2</span> Elegí un horario libre</strong>
-          <span>{form.starts_at ? `Seleccionado ${new Date(form.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Click libre selecciona · doble click avanza · ocupado edita"}</span>
-        </div>
-        <div className="slot-picker-grid">
-          {visualSlots.length === 0 && <p className="empty-day">No hay atencion configurada para ese dia. Elegi otra fecha.</p>}
-          {visualSlots.map(slot => (
-            <button
-              key={slot.key}
-              type="button"
-              className={slot.appointment ? "pick-slot occupied" : form.starts_at === slot.startsAt ? "pick-slot selected" : "pick-slot free"}
-              onClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot, true)}
-              title={slot.appointment ? "Editar este turno" : `Elegir ${slot.time} en ${slot.locationName}`}
-            >
-              <strong>{slot.time}</strong>
-              <span>{slot.appointment ? `${slot.appointment.patients?.last_name || ""}, ${slot.appointment.patients?.first_name || ""}` : "Libre"}</span>
-              <small>{slot.locationName}</small>
-            </button>
-          ))}
-        </div>
+      <div className={`slot-picker-summary ${form.starts_at ? "selected" : ""}`}>
+        <div><strong><span className="step-number">2</span> Horario</strong><span>{form.starts_at ? `${new Date(form.starts_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · ${selectedLocation?.name || "Consultorio asignado"}` : "Elegí una fecha para ver los horarios libres"}</span></div>
+        <button type="button" className={form.starts_at ? "secondary-action" : "primary"} onClick={() => setShowSlotPicker(true)}>{form.starts_at ? "Cambiar horario" : "Elegir horario"}</button>
       </div>
+
+      {showSlotPicker && <Modal onClose={() => setShowSlotPicker(false)}>
+        <div className="slot-picker-modal">
+          <div className="slot-picker-modal-head"><div><span>Horarios disponibles</span><h2>{new Date(`${selectedDate}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long" })}</h2></div><button type="button" className="secondary-action" onClick={() => setShowSlotPicker(false)}>Cerrar</button></div>
+          <div className="slot-picker-grid">
+            {visualSlots.length === 0 && <p className="notice">No hay atención configurada para este día. Elegí otra fecha.</p>}
+            {visualSlots.map(slot => <button key={slot.key} type="button" className={slot.appointment ? "pick-slot occupied" : "pick-slot free"} onClick={() => slot.appointment ? onEditAppointment(slot.appointment) : chooseFreeSlot(slot, true)} title={slot.appointment ? "Turno ocupado: abrir para editar" : `Elegir ${slot.time} en ${slot.locationName}`}><strong>{slot.time}</strong><span>{slot.appointment ? `${slot.appointment.patients?.last_name || ""}, ${slot.appointment.patients?.first_name || ""}` : "Libre"}</span><small>{slot.locationName}</small></button>)}
+          </div>
+        </div>
+      </Modal>}
 
       <p className={availabilityMessage?.startsWith("Consultorio:") ? "notice ok-notice" : "notice"}>{availabilityMessage}</p>
 
