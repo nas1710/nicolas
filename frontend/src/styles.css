@@ -4250,9 +4250,9 @@ body .public-slot.selected { border-color: var(--action); background: var(--acti
 
 /* Operational density: stable agenda cards and unobtrusive overlays. */
 body .appointment-card {
-  height: 116px;
-  min-height: 116px;
-  max-height: 116px;
+  height: 142px;
+  min-height: 142px;
+  max-height: 142px;
   overflow: hidden;
 }
 body .appointment-card .slot-button { align-content:start; min-height:0; }
@@ -4269,6 +4269,42 @@ body .notification-popover {
   left:auto;
   width:min(440px,calc(100vw - 32px));
   max-height:calc(100vh - 96px);
+  background:#fff;
+  opacity:1;
+  isolation:isolate;
+  backdrop-filter:none;
+  box-shadow:0 22px 60px rgba(7,35,40,.42);
+}
+body .notification-popover header { background:#153b42; opacity:1; }
+body .notification-popover .notification-list { background:#fff; opacity:1; }
+body .notification-popover .notification-item { opacity:1; }
+
+/* Patient rows: keep the primary workflow visible without overflowing the viewport. */
+body .patient-list .quick-actions {
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  gap:8px;
+  width:auto;
+}
+body .patient-list .quick-actions > * { flex:0 0 auto; }
+body .patient-list .patient-contact-action {
+  width:40px;
+  height:40px;
+  min-width:40px;
+  padding:0;
+  display:grid;
+  place-items:center;
+  border:1px solid #9fc7c8;
+  background:#edf8f6;
+  color:#0d6970;
+}
+body .patient-list .patient-contact-action:hover { background:#d9f0ec; }
+body .patient-list .patient-contact-action.disabled-link { opacity:.42; pointer-events:none; }
+
+@media (max-width:1280px) {
+  body .patient-list .patient-card { grid-template-columns:1fr; }
+  body .patient-list .quick-actions { justify-content:flex-start; }
 }
 
 .commercial-rows > .practice-catalog-row { grid-template-columns:minmax(140px,.8fr) minmax(105px,.45fr) auto minmax(210px,1.2fr) auto auto auto; }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AlertTriangle, Bell, Building2, CalendarClock, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, MapPin, Megaphone, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UserCheck, UsersRound, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, Building2, CalendarClock, CalendarDays, Check, ClipboardList, Copy, FileSignature, LayoutDashboard, Mail, MapPin, Megaphone, MessageCircle, Pencil, Plus, Search, Settings2, ShieldCheck, Stethoscope, UserCheck, UsersRound, XCircle } from "lucide-react";
 import {
   Appointment,
   AppointmentStatus,
@@ -954,10 +954,10 @@ function PatientSearchCard({ patient, onOpen, onValidated }: { patient: Patient;
       </div>
 
       <div className="quick-actions">
-        {patient.validation_status === "PENDIENTE" && <button className="validate-patient-action" onClick={async () => { await validateWebPatient(patient.id); await onValidated(); }}>Validar paciente</button>}
+        {patient.validation_status === "PENDIENTE" && <button className="validate-patient-action" onClick={async () => { await validateWebPatient(patient.id); await onValidated(); }}>Validar datos</button>}
         <button className="open-patient" onClick={onOpen}>Abrir historia</button>
-        <a className={patient.phone ? "" : "disabled-link"} href={whatsapp || undefined} target="_blank" rel="noreferrer">Enviar WhatsApp</a>
-        <a className={patient.email ? "" : "disabled-link"} href={mail || undefined}>Enviar email</a>
+        <a className={`icon-button patient-contact-action ${patient.phone ? "" : "disabled-link"}`} href={whatsapp || undefined} target="_blank" rel="noreferrer" title="Enviar WhatsApp" aria-label={`Enviar WhatsApp a ${patient.first_name}`}><MessageCircle size={18} /></a>
+        <a className={`icon-button patient-contact-action ${patient.email ? "" : "disabled-link"}`} href={mail || undefined} title="Enviar email" aria-label={`Enviar email a ${patient.first_name}`}><Mail size={18} /></a>
       </div>
     </article>
   );
