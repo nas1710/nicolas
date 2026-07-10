@@ -17,6 +17,10 @@ function normalizedDocument(value: unknown) {
   return text(value).replace(/\D/g, "");
 }
 
+function duplicateAccessMessage(kind: "email" | "document") {
+  return `Ya existe un acceso con ese ${kind === "email" ? "email" : "DNI"}. Edita, reactiva o blanquea ese usuario en lugar de crear otro.`;
+}
+
 function json(body: unknown, headers: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -93,6 +97,31 @@ Deno.serve(async request => {
       if (error) console.error("No se pudo registrar auditoria", error.message);
     };
 
+    const assertNoDuplicateAccess = async (
+      organizationId: string | null | undefined,
+      email: string,
+      documentNumber: string,
+      currentUserId?: string
+    ) => {
+      const baseSelect = "id, full_name, email, document_number";
+      if (email) {
+        let query = adminClient.from("profiles").select(baseSelect).eq("email", email);
+        if (organizationId) query = query.eq("organization_id", organizationId);
+        if (currentUserId) query = query.neq("id", currentUserId);
+        const { data, error } = await query.limit(1);
+        if (error) throw error;
+        if (data?.length) throw new Error(duplicateAccessMessage("email"));
+      }
+      if (documentNumber) {
+        let query = adminClient.from("profiles").select(baseSelect).eq("document_number", documentNumber);
+        if (organizationId) query = query.eq("organization_id", organizationId);
+        if (currentUserId) query = query.neq("id", currentUserId);
+        const { data, error } = await query.limit(1);
+        if (error) throw error;
+        if (data?.length) throw new Error(duplicateAccessMessage("document"));
+      }
+    };
+
     if (action === "list_users") {
       let query = adminClient
         .from("profiles")
@@ -125,6 +154,7 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+      await assertNoDuplicateAccess(organizationId, email, documentNumber);
       const { data: subscription } = await adminClient.from("organization_subscriptions").select("plan:commercial_plans(max_professionals,max_internal_users)").eq("organization_id", organizationId).maybeSingle();
       const plan = Array.isArray(subscription?.plan) ? subscription?.plan[0] : subscription?.plan;
       if (plan?.max_internal_users) {
@@ -314,6 +344,7 @@ Deno.serve(async request => {
       if (!fullName) throw new Error("Ingresa el nombre del usuario.");
       if (documentNumber.length < 6) throw new Error("Ingresa el DNI del usuario.");
       if (role === "SECRETARIA" && target.active && !locationId) throw new Error("Asigna un consultorio a la secretaria.");
+      await assertNoDuplicateAccess(target.organization_id, email, documentNumber, target.id);
       if (locationId) {
         const { data: validLocation } = await adminClient.from("locations").select("id").eq("id", locationId).eq("organization_id", target.organization_id).maybeSingle();
         if (!validLocation) throw new Error("El consultorio no pertenece a la organizacion del usuario.");

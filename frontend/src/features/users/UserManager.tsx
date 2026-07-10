@@ -27,6 +27,12 @@ export function UserManager({ users, locations, organizations, currentOrganizati
   const [secretaryAssignments, setSecretaryAssignments] = useState<Record<string,string[]>>({});
   const professionals = users.filter(user => user.active && ["MEDICO", "MEDICA_ADMIN"].includes(user.role));
   const visibleUsers = users.filter(user => statusFilter === "todos" || (statusFilter === "activos" ? user.active : !user.active));
+  const normalizedFormEmail = form.email.trim().toLowerCase();
+  const normalizedFormDocument = form.document_number.replace(/\D/g, "");
+  const duplicateAccess = users.find(user => (
+    user.email.trim().toLowerCase() === normalizedFormEmail
+    || (!!normalizedFormDocument && (user.document_number || "").replace(/\D/g, "") === normalizedFormDocument)
+  ));
 
   async function refreshAssignments() {
     const rows = await listProfessionalSecretaryAssignments().catch(() => []);
@@ -44,6 +50,7 @@ export function UserManager({ users, locations, organizations, currentOrganizati
     if (form.document_number.replace(/\D/g, "").length < 6) return setError("Carga el DNI del usuario para poder blanquear su acceso.");
     if (form.password.length < 8) return setError("La contrasena debe tener al menos 8 caracteres.");
     if (form.role === "SECRETARIA" && !form.location_id) return setError("La secretaria debe tener un consultorio.");
+    if (duplicateAccess) return setError(`Ya existe un acceso para ${duplicateAccess.full_name} con ese ${duplicateAccess.email.trim().toLowerCase() === normalizedFormEmail ? "email" : "DNI"}. Edita o reactiva ese acceso.`);
     setError("");
     setMessage("");
     setSaving(true);
@@ -89,6 +96,7 @@ export function UserManager({ users, locations, organizations, currentOrganizati
                 {organizations.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.commercial_name}</option>)}
               </select>
             </label>}
+            {duplicateAccess && <p className="notice warning-notice">Ya existe un acceso con ese email o DNI: <strong>{duplicateAccess.full_name}</strong>. No se crean accesos duplicados; editalo, reactivalo o blanqueale la clave.</p>}
             {error && <p className="error">{error}</p>}
             {message && <p className="notice ok-notice">{message}</p>}
             <div className="form-actions"><button className="primary" disabled={saving}>{saving ? "Creando..." : "Crear usuario"}</button></div>

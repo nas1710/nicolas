@@ -46,6 +46,13 @@ Deno.serve(async request => {
     const { data: list, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (listError) throw listError;
     if (list.users.some(user => user.email?.toLowerCase() === email)) throw new Error("Ya existe una solicitud o un usuario con ese email. Consulta al Master.");
+    const { data: existingProfile, error: profileLookupError } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (profileLookupError) throw profileLookupError;
+    if (existingProfile) throw new Error("Ya existe una solicitud o un usuario con ese email. Consulta al Master.");
 
     const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } });
     if (error || !data.user) throw error || new Error("No se pudo registrar la solicitud.");
